@@ -1,22 +1,28 @@
 ﻿using ITBees.Interfaces.Platforms;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ITBees.JT808
 {
-    using System;
-    using System.Net;
-    using System.Net.Sockets;
-    using System.Text;
-    using System.Threading.Tasks;
-
-    public class JT808Server
+    public class JT808Server : IJT808Server
     {
         private readonly int _port;
         private TcpListener listener;
-        
+        private readonly object fileLock = new object();
+        private const string jsonFilePath = "receivedData.json";
+        private SemaphoreSlim semaphore; 
+
         public JT808Server(IPlatformSettingsService platformSettingsService)
         {
             _port = Convert.ToInt32(platformSettingsService.GetSetting("JT808_port"));
-
+            semaphore = new SemaphoreSlim(Convert.ToInt32(platformSettingsService.GetSetting("JT808_maximum_parallel_clients")));
             listener = new TcpListener(IPAddress.Any, _port);
         }
 
@@ -34,32 +40,8 @@ namespace ITBees.JT808
             }
         }
 
-        private async Task HandleClient(TcpClient client)
-        {
-            NetworkStream stream = client.GetStream();
-            byte[] buffer = new byte[1024];
-            int bytesRead;
-
-            while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-            {
-                byte[] receivedData = new byte[bytesRead];
-                Array.Copy(buffer, 0, receivedData, 0, bytesRead);
-
-                Console.WriteLine($"Received {bytesRead} bytes: {BitConverter.ToString(receivedData)}");
-
-                // sample response to device
-                byte[] response = CreateJT808Response();
-                await stream.WriteAsync(response, 0, response.Length);
-                Console.WriteLine("Response sent to the device.");
-            }
-
-            Console.WriteLine("Device disconnected.");
-            client.Close();
-        }
-
         private byte[] CreateJT808Response()
         {
-            // Sample response
             string responseMessage = "JT808 response";
             return Encoding.ASCII.GetBytes(responseMessage);
         }
@@ -67,6 +49,65 @@ namespace ITBees.JT808
         public void Stop()
         {
             listener.Stop();
+        }
+
+        private async Task HandleClient(TcpClient client)
+        {
+            await semaphore.WaitAsync();
+
+            try
+            {
+                byte[] buffer = new byte[1024];
+                int bytesRead = await client.GetStream().ReadAsync(buffer, 0, buffer.Length);
+
+                if (bytesRead > 0)
+                {
+                    byte[] receivedData = new byte[bytesRead];
+                    Array.Copy(buffer, receivedData, bytesRead);
+
+                    string receivedString = BitConverter.ToString(receivedData);
+                    Console.WriteLine($"Received {bytesRead} bytes: {receivedString}");
+
+                    SaveDataToJsonFile(receivedString);
+
+                    byte[] response = CreateJT808Response();
+                    await client.GetStream().WriteAsync(response, 0, response.Length);
+                    Console.WriteLine("Response sent to the device.");
+                }
+            }
+            finally
+            {
+                semaphore.Release();
+                client.Close();
+            }
+        }
+
+        private void SaveDataToJsonFile(string receivedString)
+        {
+            var dataEntry = new
+            {
+                Timestamp = DateTime.UtcNow,
+                Data = receivedString
+            };
+
+            lock (fileLock)
+            {
+                List<object> existingData = new List<object>();
+
+                if (File.Exists(jsonFilePath))
+                {
+                    string existingJson = File.ReadAllText(jsonFilePath);
+                    if (!string.IsNullOrEmpty(existingJson))
+                    {
+                        existingData = JsonSerializer.Deserialize<List<object>>(existingJson) ?? new List<object>();
+                    }
+                }
+
+                existingData.Add(dataEntry);
+
+                string newJson = JsonSerializer.Serialize(existingData, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(jsonFilePath, newJson);
+            }
         }
     }
 }
