@@ -17,7 +17,8 @@ namespace ITBees.JT808
         private TcpListener listener;
         private readonly object fileLock = new object();
         private const string jsonFilePath = "receivedData.json";
-        private SemaphoreSlim semaphore; 
+        private SemaphoreSlim semaphore;
+        public bool alreadyStarted { get; set; }
 
         public JT808Server(IPlatformSettingsService platformSettingsService)
         {
@@ -28,7 +29,11 @@ namespace ITBees.JT808
 
         public async Task StartListening()
         {
+            if (alreadyStarted)
+                return;
+
             listener.Start();
+            alreadyStarted = true;
             Console.WriteLine($"JT808 Server is listening on port {_port}...");
 
             while (true)
@@ -49,6 +54,7 @@ namespace ITBees.JT808
         public void Stop()
         {
             listener.Stop();
+            alreadyStarted = false;
         }
 
         private async Task HandleClient(TcpClient client)
