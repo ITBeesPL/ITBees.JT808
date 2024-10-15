@@ -2,6 +2,6 @@
 
 public interface IJT808Server
 {
-    Task StartListening();
-    void Stop();
+    Task StartAsync();
+    //void Stop();
 }
