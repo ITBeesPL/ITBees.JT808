@@ -59,6 +59,7 @@ namespace ITBees.JT808
 
         private async Task HandleClient(TcpClient client)
         {
+            SaveDataToJsonFile("Received connection...");
             await semaphore.WaitAsync();
 
             try
