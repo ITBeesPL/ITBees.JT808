@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ITBees.Interfaces" Version="8.0.27" />
+    <PackageReference Include="ITBees.Interfaces" Version="8.0.28" />
   </ItemGroup>
 
 </Project>
