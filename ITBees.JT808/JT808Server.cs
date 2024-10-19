@@ -36,13 +36,20 @@ namespace JT808ServerApp
             _logger = logger;
             _port = Convert.ToInt32(_platformSettingsService.GetSetting("JT808_port"));
             _listener = new TcpListener(IPAddress.Any, _port);
+            _logger.LogInformation($"Created class JT808 server on port : {_port}");
         }
 
         public async Task StartAsync()
         {
+            var format = $"Start sync - JT808 server on port {_port}";
+            Console.WriteLine(format);
+            _logger.LogInformation(format);
             _listener.Start();
             while (true)
             {
+                var value = $"received request {DateTime.Now}";
+                Console.WriteLine(value);
+                _logger.LogInformation(value);
                 var client = await _listener.AcceptTcpClientAsync();
                 _ = Task.Run(() => HandleClientAsync(client));
             }
