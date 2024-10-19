@@ -111,10 +111,10 @@ namespace JT7808ClientEmulator
             byte plateColor = 0x01; // Blue
             body.Add(plateColor);
 
-            // License Plate (variable, GBK encoding)
-            string plateNumber = "W12345";
-            byte[] plateNumberBytes = Encoding.GetEncoding("GBK").GetBytes(plateNumber);
-            body.AddRange(plateNumberBytes);
+            //// License Plate (variable, GBK encoding)
+            //string plateNumber = "W12345";
+            //byte[] plateNumberBytes = Encoding.GetEncoding("GBK").GetBytes(plateNumber);
+            //body.AddRange(plateNumberBytes);
 
             byte[] bodyBytes = body.ToArray();
 
