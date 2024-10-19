@@ -1,58 +1,50 @@
-﻿using System.Net;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Tasks;
 using ITBees.Interfaces.Platforms;
+using ITBees.JT808.Interfaces;
+using Microsoft.Extensions.Logging;
 using Environment = System.Environment;
 
-namespace ITBees.JT808
+namespace JT808ServerApp
 {
-    public class JT808Server :IJT808Server
+    public class JT808Server : IJT808Server
     {
+        private readonly IPlatformSettingsService _platformSettingsService;
+        private readonly IGpsWriteRequestLogSingleton _gpsWriteRequestLogSingleton;
+        private readonly IGpsDeviceAuthorizationSingleton _gpsDeviceAuthorizationSingleton;
+        private readonly ILogger<JT808Server> _logger;
         private readonly int _port;
         private TcpListener _listener;
-        private readonly string _logFilePath = "connection_log.txt";
         private readonly object _fileLock = new object();
+        private Dictionary<string, TcpClient> _authorizedDevices = new Dictionary<string, TcpClient>();
+        private ushort _serialNumber = 0;
 
-        public JT808Server(IPlatformSettingsService platformSettingsService)
+        public JT808Server(IPlatformSettingsService platformSettingsService,
+            IGpsWriteRequestLogSingleton gpsWriteRequestLogSingleton,
+            IGpsDeviceAuthorizationSingleton gpsDeviceAuthorizationSingleton,
+            ILogger<JT808Server> logger)
         {
-            _port = Convert.ToInt32(platformSettingsService.GetSetting("JT808_port"));
+            _platformSettingsService = platformSettingsService;
+            _gpsWriteRequestLogSingleton = gpsWriteRequestLogSingleton;
+            _gpsDeviceAuthorizationSingleton = gpsDeviceAuthorizationSingleton;
+            _logger = logger;
+            _port = Convert.ToInt32(_platformSettingsService.GetSetting("JT808_port"));
             _listener = new TcpListener(IPAddress.Any, _port);
         }
 
         public async Task StartAsync()
         {
             _listener.Start();
-            Console.WriteLine($"JT808 Server is listening on port {_port}...");
-
             while (true)
             {
                 var client = await _listener.AcceptTcpClientAsync();
-                Console.WriteLine("Device connected.");
-
-                // Log the connection to a file
-                LogConnection(client);
-
                 _ = Task.Run(() => HandleClientAsync(client));
-            }
-        }
-
-        private void LogConnection(TcpClient client)
-        {
-            try
-            {
-                var remoteEndPoint = client.Client.RemoteEndPoint.ToString();
-                var logEntry = $"{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} - Connection from {remoteEndPoint}";
-
-                lock (_fileLock)
-                {
-                    File.AppendAllText(_logFilePath, logEntry + Environment.NewLine);
-                }
-
-                Console.WriteLine("Connection logged to file.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error logging connection: {ex.Message}");
             }
         }
 
@@ -62,48 +54,39 @@ namespace ITBees.JT808
             {
                 using (var networkStream = client.GetStream())
                 {
-                    var buffer = new byte[1024]; // buffer to hold received bytes
+                    var buffer = new byte[1024];
                     var byteList = new List<byte>();
 
                     while (true)
                     {
                         int bytesRead = await networkStream.ReadAsync(buffer, 0, buffer.Length);
                         if (bytesRead == 0)
-                        {
-                            // Client disconnected
                             break;
-                        }
 
-                        // Add received bytes to the byte list
                         byteList.AddRange(buffer.Take(bytesRead));
 
-                        if (byteList.Contains(0x7E)) // Detect end flag in the message
+                        while (byteList.Contains(0x7E))
                         {
-                            // Process the complete message
-                            var message = byteList.ToArray();
-                            byteList.Clear(); // Clear the byte list for the next message
+                            int startIndex = byteList.IndexOf(0x7E);
+                            int endIndex = byteList.IndexOf(0x7E, startIndex + 1);
+                            if (endIndex == -1)
+                                break;
 
-                            // Process the message
-                            var processedMessage = ProcessJT808Message(message);
-                            if (processedMessage != null)
+                            var messageBytes = byteList.Skip(startIndex).Take(endIndex - startIndex + 1).ToArray();
+                            byteList.RemoveRange(0, endIndex + 1);
+
+                            var data = ProcessJT808Message(messageBytes);
+                            if (data != null)
                             {
-                                // Handle the message and get response
-                                var response = HandleMessage(processedMessage);
-
+                                var response = HandleMessage(data, client);
                                 if (response != null)
                                 {
-                                    // Send response
-                                    var responseMessage = CreateJT808Message(response);
-                                    await networkStream.WriteAsync(responseMessage, 0, responseMessage.Length);
+                                    await networkStream.WriteAsync(response, 0, response.Length);
                                 }
                             }
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error handling client: {ex.Message}");
             }
             finally
             {
@@ -111,23 +94,16 @@ namespace ITBees.JT808
             }
         }
 
-
         private byte[] ProcessJT808Message(byte[] message)
         {
-            // Remove start and end flags
             if (message.Length < 2 || message[0] != 0x7E || message[^1] != 0x7E)
-            {
-                Console.WriteLine("Invalid message framing.");
                 return null;
-            }
 
             var content = new byte[message.Length - 2];
             Array.Copy(message, 1, content, 0, content.Length);
 
-            // Unescape data
             content = Unescape(content);
 
-            // Verify checksum
             var checksum = content[^1];
             var data = new byte[content.Length - 1];
             Array.Copy(content, 0, data, 0, data.Length);
@@ -139,10 +115,7 @@ namespace ITBees.JT808
             }
 
             if (checksum != calculatedChecksum)
-            {
-                Console.WriteLine("Checksum mismatch.");
                 return null;
-            }
 
             return data;
         }
@@ -150,35 +123,39 @@ namespace ITBees.JT808
         private byte[] Unescape(byte[] data)
         {
             var result = new List<byte>();
-            for (int i = 0; i < data.Length; i++)
+            int i = 0;
+            while (i < data.Length)
             {
                 if (data[i] == 0x7D)
                 {
                     if (i + 1 < data.Length)
                     {
-                        if (data[i + 1] == 0x01)
-                        {
-                            result.Add(0x7D);
-                            i++;
-                        }
-                        else if (data[i + 1] == 0x02)
+                        if (data[i + 1] == 0x02)
                         {
                             result.Add(0x7E);
-                            i++;
+                            i += 2;
+                        }
+                        else if (data[i + 1] == 0x01)
+                        {
+                            result.Add(0x7D);
+                            i += 2;
                         }
                         else
                         {
                             result.Add(data[i]);
+                            i++;
                         }
                     }
                     else
                     {
                         result.Add(data[i]);
+                        i++;
                     }
                 }
                 else
                 {
                     result.Add(data[i]);
+                    i++;
                 }
             }
             return result.ToArray();
@@ -207,172 +184,244 @@ namespace ITBees.JT808
             return result.ToArray();
         }
 
-        private byte[] CreateJT808Message(byte[] data)
+        private byte[] HandleMessage(byte[] data, TcpClient client)
         {
-            var message = new List<byte> { 0x7E };
+            string base64String = Convert.ToBase64String(data);
+            var gpsData = new GpsData() { RequestBody = base64String };
 
-            // Calculate checksum
-            byte checksum = 0;
-            foreach (var b in data)
+            try
             {
-                checksum ^= b;
-            }
+                if (data.Length < 12)
+                    return null;
 
-            // Append checksum
-            var fullData = new byte[data.Length + 1];
-            Array.Copy(data, 0, fullData, 0, data.Length);
-            fullData[^1] = checksum;
+                ushort msgId = (ushort)((data[0] << 8) + data[1]);
+                ushort msgBodyProps = (ushort)((data[2] << 8) + data[3]);
+                string deviceId = BCDToString(data, 4, 6);
+                ushort msgSerialNumber = (ushort)((data[10] << 8) + data[11]);
+                gpsData.DeviceId = deviceId;
+                var msgBody = new byte[data.Length - 12];
+                Array.Copy(data, 12, msgBody, 0, msgBody.Length);
 
-            // Escape data
-            var escapedData = Escape(fullData);
-            message.AddRange(escapedData);
-            message.Add(0x7E);
-
-            return message.ToArray();
-        }
-
-        private byte[] HandleMessage(byte[] data)
-        {
-            // Parse message header
-            if (data.Length < 12)
-            {
-                Console.WriteLine("Invalid message length.");
+                switch (msgId)
+                {
+                    case 0x0100:
+                        return HandleTerminalRegistration(msgSerialNumber, deviceId, msgBody, gpsData);
+                    case 0x0102:
+                        return HandleAuthentication(msgSerialNumber, deviceId, msgBody, gpsData);
+                    case 0x0002:
+                        gpsData.RequestBody = "Create universal response " + gpsData.RequestBody;
+                        _gpsWriteRequestLogSingleton.Write(gpsData);
+                        return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
+                    case 0x0200:
+                        HandleLocationReport(deviceId, msgBody, gpsData);
+                        return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
+                    case 0x0001:
+                        gpsData.RequestBody = "Break - 0x0001" + gpsData.RequestBody;
+                        _gpsWriteRequestLogSingleton.Write(gpsData);
+                        break;
+                    case 0x0300:
+                        HandleTextMessage(deviceId, msgBody, gpsData);
+                        return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
+                    case 0x0500:
+                        HandleControlResponse(deviceId, msgBody, gpsData);
+                        return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
+                    case 0x0F01:
+                        return HandleTimeSyncRequest(msgSerialNumber, deviceId, gpsData);
+                    default:
+                        gpsData.RequestBody = "Default not handled case - take a look at it" + gpsData.RequestBody;
+                        _gpsWriteRequestLogSingleton.Write(gpsData);
+                        return CreateUniversalResponse(msgSerialNumber, msgId, 3, deviceId);
+                }
                 return null;
             }
-
-            ushort msgId = (ushort)((data[0] << 8) + data[1]);
-            ushort msgBodyProps = (ushort)((data[2] << 8) + data[3]);
-
-            var phoneNumber = BCDToString(data, 4, 6);
-            ushort msgSerialNumber = (ushort)((data[10] << 8) + data[11]);
-
-            var msgBody = new byte[data.Length - 12];
-            Array.Copy(data, 12, msgBody, 0, msgBody.Length);
-
-            Console.WriteLine($"Received message ID: 0x{msgId:X4} from device: {phoneNumber}");
-
-            switch (msgId)
+            catch (Exception e)
             {
-                case 0x0100: // Terminal registration
-                    return HandleTerminalRegistration(msgSerialNumber, phoneNumber, msgBody);
-                case 0x0002: // Heartbeat
-                    return HandleHeartbeat(msgSerialNumber, phoneNumber);
-                case 0x0200: // Location information report
-                    // Handle location data as needed
-                    Console.WriteLine("Received location information.");
-                    // Send universal response
-                    return CreateUniversalResponse(msgSerialNumber, msgId, 0);
-                case 0x0001: // Terminal common response
-                    Console.WriteLine("Received terminal common response.");
-                    break;
-                case 0x0102: // Terminal authentication
-                    return HandleAuthentication(msgSerialNumber, phoneNumber, msgBody);
-                default:
-                    Console.WriteLine($"Unknown message ID: 0x{msgId:X4}");
-                    // Send universal response with error code
-                    return CreateUniversalResponse(msgSerialNumber, msgId, 3);
+                _logger.LogError(e, base64String);
+                throw e;
             }
-
-            return null;
         }
 
-        private byte[] HandleTerminalRegistration(ushort msgSerialNumber, string phoneNumber, byte[] msgBody)
+        private byte[] HandleTerminalRegistration(ushort msgSerialNumber, string deviceId, byte[] msgBody,
+            GpsData gpsData)
         {
-            Console.WriteLine("Handling terminal registration.");
+            gpsData.RequestBody = "HandleTerminalRegistration" + gpsData.RequestBody;
+            _authorizedDevices[deviceId] = null;
 
-            // Parse registration message body as per protocol
-            // For brevity, parsing is omitted here but should be implemented according to the protocol
-
-            // Prepare response message
             ushort responseMsgId = 0x8100;
             var responseBody = new List<byte>();
 
-            // Add response serial number (same as received)
             responseBody.Add((byte)(msgSerialNumber >> 8));
             responseBody.Add((byte)(msgSerialNumber & 0xFF));
-
-            // Add result (0 for success)
             responseBody.Add(0x00);
-
-            // Add authentication code (if necessary)
             var authCode = Encoding.ASCII.GetBytes("AUTH_CODE");
             responseBody.AddRange(authCode);
 
-            // Build response message
-            var responseData = BuildJT808Message(responseMsgId, phoneNumber, responseBody.ToArray());
-
+            var responseData = BuildJT808Message(responseMsgId, deviceId, responseBody.ToArray());
+            _gpsWriteRequestLogSingleton.Write(gpsData);
             return responseData;
         }
 
-        private byte[] HandleAuthentication(ushort msgSerialNumber, string phoneNumber, byte[] msgBody)
+        private byte[] HandleAuthentication(ushort msgSerialNumber, string deviceId, byte[] msgBody, GpsData gpsData)
         {
-            Console.WriteLine("Handling authentication.");
-
-            // Process authentication code from msgBody if needed
-
-            // Send universal response indicating success
-            return CreateUniversalResponse(msgSerialNumber, 0x0102, 0);
+            var authCode = Encoding.ASCII.GetString(msgBody);
+            gpsData.RequestBody = "Handle authentication" + gpsData.RequestBody;
+            _gpsWriteRequestLogSingleton.Write(gpsData);
+            return CreateUniversalResponse(msgSerialNumber, 0x0102, 0, deviceId);
         }
 
-        private byte[] HandleHeartbeat(ushort msgSerialNumber, string phoneNumber)
+        private void HandleLocationReport(string deviceId, byte[] msgBody, GpsData gpsData)
         {
-            Console.WriteLine("Handling heartbeat.");
+            uint alarmFlag = BitConverter.ToUInt32(msgBody, 0);
+            uint status = BitConverter.ToUInt32(msgBody, 4);
+            uint latitude = BitConverter.ToUInt32(msgBody, 8);
+            uint longitude = BitConverter.ToUInt32(msgBody, 12);
+            ushort altitude = BitConverter.ToUInt16(msgBody, 16);
+            ushort speed = BitConverter.ToUInt16(msgBody, 18);
+            ushort direction = BitConverter.ToUInt16(msgBody, 20);
+            string time = BCDToString(msgBody, 22, 6);
 
-            // Send universal response indicating success
-            return CreateUniversalResponse(msgSerialNumber, 0x0002, 0);
+            gpsData.DeviceId = deviceId;
+            gpsData.Latitude = latitude / 1e6;
+            gpsData.Longitude = longitude / 1e6;
+            gpsData.Speed = speed / 10.0;
+            gpsData.Direction = direction;
+            gpsData.Timestamp = DateTime.ParseExact(time, "yyMMddHHmmss", null);
+            gpsData.AlarmFlag = alarmFlag;
+            gpsData.Status = status;
+            gpsData.Altitude = altitude;
+            gpsData.RequestBody = "Handle location repost" + gpsData.RequestBody;
+
+            ParseAdditionalData(msgBody.Skip(28).ToArray(), gpsData);
+
+            _gpsWriteRequestLogSingleton.Write(gpsData);
+
+            //SerializeGpsData(gpsData);
         }
 
-        private byte[] CreateUniversalResponse(ushort msgSerialNumber, ushort msgId, byte result)
+        private void ParseAdditionalData(byte[] data, GpsData gpsData)
+        {
+            int index = 0;
+            while (index < data.Length)
+            {
+                byte infoId = data[index++];
+                byte infoLength = data[index++];
+                byte[] infoContent = data.Skip(index).Take(infoLength).ToArray();
+                index += infoLength;
+
+                switch (infoId)
+                {
+                    case 0x01:
+                        gpsData.Mileage = BitConverter.ToUInt32(infoContent.Reverse().ToArray(), 0) / 10.0;
+                        break;
+                    case 0x25:
+                        gpsData.ExtendedStatus = BitConverter.ToUInt32(infoContent.Reverse().ToArray(), 0);
+                        break;
+                    case 0x2A:
+                        gpsData.IOStatus = BitConverter.ToUInt16(infoContent.Reverse().ToArray(), 0);
+                        break;
+                    case 0x30:
+                        gpsData.NetworkSignal = infoContent[0];
+                        break;
+                    case 0x31:
+                        gpsData.Satellites = infoContent[0];
+                        break;
+                    case 0xE3:
+                        gpsData.BatteryVoltage = BitConverter.ToUInt16(infoContent.Reverse().ToArray(), 0) * 0.001;
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+
+        private void HandleTextMessage(string deviceId, byte[] msgBody, GpsData gpsData)
+        {
+            var message = Encoding.GetEncoding("GBK").GetString(msgBody);
+
+            gpsData.RequestBody = "Handle text message " + gpsData.RequestBody;
+            _gpsWriteRequestLogSingleton.Write(gpsData);
+        }
+
+        private void HandleControlResponse(string deviceId, byte[] msgBody, GpsData gpsData)
+        {
+            gpsData.RequestBody = "Handle control response WTF? " + gpsData.RequestBody;
+        }
+
+        private byte[] HandleTimeSyncRequest(ushort msgSerialNumber, string deviceId, GpsData gpsData)
+        {
+            ushort responseMsgId = 0x8F01;
+            var responseBody = new List<byte>();
+
+            responseBody.Add(0x01); // Result: success
+            var time = DateTime.UtcNow.ToString("yyMMddHHmmss");
+            var timeBytes = StringToBCD(time, 6);
+            responseBody.AddRange(timeBytes);
+
+            var responseData = BuildJT808Message(responseMsgId, deviceId, responseBody.ToArray());
+
+            gpsData.RequestBody = "Handle timesync request" + gpsData.RequestBody;
+            _gpsWriteRequestLogSingleton.Write(gpsData);
+            return responseData;
+        }
+
+        private void SerializeGpsData(GpsData gpsData)
+        {
+            var jsonData = System.Text.Json.JsonSerializer.Serialize(gpsData);
+            lock (_fileLock)
+            {
+                File.AppendAllText("gps_data_log.json", jsonData + Environment.NewLine);
+            }
+        }
+
+        private byte[] CreateUniversalResponse(ushort msgSerialNumber, ushort msgId, byte result, string deviceId)
         {
             ushort responseMsgId = 0x8001;
             var responseBody = new List<byte>();
 
-            // Add original message serial number
             responseBody.Add((byte)(msgSerialNumber >> 8));
             responseBody.Add((byte)(msgSerialNumber & 0xFF));
-
-            // Add original message ID
             responseBody.Add((byte)(msgId >> 8));
             responseBody.Add((byte)(msgId & 0xFF));
-
-            // Add result code
             responseBody.Add(result);
 
-            // For the universal response, phone number can be empty or same as the device's
-            var responseData = BuildJT808Message(responseMsgId, "00000000000", responseBody.ToArray());
-
+            var responseData = BuildJT808Message(responseMsgId, deviceId, responseBody.ToArray());
             return responseData;
         }
 
-        private byte[] BuildJT808Message(ushort msgId, string phoneNumber, byte[] msgBody)
+        private byte[] BuildJT808Message(ushort msgId, string deviceId, byte[] msgBody)
         {
             var message = new List<byte>();
 
-            // Message ID
             message.Add((byte)(msgId >> 8));
             message.Add((byte)(msgId & 0xFF));
 
-            // Message body properties
             ushort bodyProps = (ushort)msgBody.Length;
             message.Add((byte)(bodyProps >> 8));
             message.Add((byte)(bodyProps & 0xFF));
 
-            // Phone number (BCD encoded)
-            var phoneNumberBCD = StringToBCD(phoneNumber, 6);
-            message.AddRange(phoneNumberBCD);
+            var deviceIdBCD = StringToBCD(deviceId, 6);
+            message.AddRange(deviceIdBCD);
 
-            // Message serial number
             ushort msgSerialNumber = GetNextSerialNumber();
             message.Add((byte)(msgSerialNumber >> 8));
             message.Add((byte)(msgSerialNumber & 0xFF));
 
-            // Message body
             message.AddRange(msgBody);
 
-            return message.ToArray();
-        }
+            byte checksum = 0;
+            foreach (var b in message)
+            {
+                checksum ^= b;
+            }
 
-        private ushort _serialNumber = 0;
+            var fullMessage = new List<byte> { 0x7E };
+            var escapedData = Escape(message.ToArray());
+            fullMessage.AddRange(escapedData);
+            fullMessage.Add(checksum);
+            fullMessage.Add(0x7E);
+
+            return fullMessage.ToArray();
+        }
 
         private ushort GetNextSerialNumber()
         {
@@ -395,30 +444,23 @@ namespace ITBees.JT808
 
         private byte[] StringToBCD(string str, int length)
         {
-            // Ensure the string has even length
             if (str.Length % 2 != 0)
-            {
                 str = "0" + str;
-            }
 
             var bcd = new byte[length];
-            int strIndex = str.Length - (length * 2);
+            int strIndex = 0;
 
             for (int i = 0; i < length; i++)
             {
                 byte highNibble = 0;
                 byte lowNibble = 0;
 
-                if (strIndex >= 0)
-                {
-                    highNibble = (byte)(str[strIndex] - '0');
-                }
-                if (strIndex + 1 >= 0)
-                {
-                    lowNibble = (byte)(str[strIndex + 1] - '0');
-                }
+                if (strIndex < str.Length)
+                    highNibble = (byte)(str[strIndex++] - '0');
+                if (strIndex < str.Length)
+                    lowNibble = (byte)(str[strIndex++] - '0');
+
                 bcd[i] = (byte)((highNibble << 4) | lowNibble);
-                strIndex += 2;
             }
             return bcd;
         }

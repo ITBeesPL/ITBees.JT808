@@ -8,7 +8,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ITBees.Fas.Setup" Version="8.0.7" />
     <PackageReference Include="ITBees.Interfaces" Version="8.0.28" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Setup\" />
   </ItemGroup>
 
 </Project>
