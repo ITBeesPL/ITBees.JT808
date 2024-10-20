@@ -194,7 +194,7 @@ namespace JT808ServerApp
         private byte[] HandleMessage(byte[] data, TcpClient client)
         {
             string base64String = Convert.ToBase64String(data);
-            var gpsData = new GpsData() { RequestBody = base64String };
+            var gpsData = new GpsData() { RequestBody = base64String, Received = DateTime.Now};
 
             try
             {
@@ -204,7 +204,7 @@ namespace JT808ServerApp
                 ushort msgId = ReadUInt16BigEndian(data, 0);
                 ushort msgBodyProps = ReadUInt16BigEndian(data, 2);
                 string deviceId = BCDToString(data, 4, 6);
-                ushort msgSerialNumber = (ushort)((data[10] << 8) + data[11]);
+                ushort msgSerialNumber = ReadUInt16BigEndian(data, 10);
                 gpsData.DeviceId = deviceId;
                 var msgBody = new byte[data.Length - 12];
                 Array.Copy(data, 12, msgBody, 0, msgBody.Length);
@@ -278,13 +278,13 @@ namespace JT808ServerApp
 
         private void HandleLocationReport(string deviceId, byte[] msgBody, GpsData gpsData)
         {
-            uint alarmFlag = BitConverter.ToUInt32(msgBody, 0);
-            uint status = BitConverter.ToUInt32(msgBody, 4);
-            uint latitude = BitConverter.ToUInt32(msgBody, 8);
-            uint longitude = BitConverter.ToUInt32(msgBody, 12);
-            ushort altitude = BitConverter.ToUInt16(msgBody, 16);
-            ushort speed = BitConverter.ToUInt16(msgBody, 18);
-            ushort direction = BitConverter.ToUInt16(msgBody, 20);
+            uint alarmFlag = ReadUInt32BigEndian(msgBody, 0);
+            uint status = ReadUInt32BigEndian(msgBody, 4);
+            uint latitude = ReadUInt32BigEndian(msgBody, 8);
+            uint longitude = ReadUInt32BigEndian(msgBody, 12);
+            ushort altitude = ReadUInt16BigEndian(msgBody, 16);
+            ushort speed = ReadUInt16BigEndian(msgBody, 18);
+            ushort direction = ReadUInt16BigEndian(msgBody, 20);
             string time = BCDToString(msgBody, 22, 6);
 
             gpsData.DeviceId = deviceId;
@@ -296,13 +296,11 @@ namespace JT808ServerApp
             gpsData.AlarmFlag = alarmFlag;
             gpsData.Status = status;
             gpsData.Altitude = altitude;
-            gpsData.RequestBody = "Handle location repost" + gpsData.RequestBody;
+            gpsData.RequestBody = "Handle location report" + gpsData.RequestBody;
 
             ParseAdditionalData(msgBody.Skip(28).ToArray(), gpsData);
 
             _gpsWriteRequestLogSingleton.Write(gpsData);
-
-            //SerializeGpsData(gpsData);
         }
 
         private void ParseAdditionalData(byte[] data, GpsData gpsData)
@@ -318,13 +316,13 @@ namespace JT808ServerApp
                 switch (infoId)
                 {
                     case 0x01:
-                        gpsData.Mileage = BitConverter.ToUInt32(infoContent.Reverse().ToArray(), 0) / 10.0;
+                        gpsData.Mileage = ReadUInt32BigEndian(infoContent, 0) / 10.0;
                         break;
                     case 0x25:
-                        gpsData.ExtendedStatus = BitConverter.ToUInt32(infoContent.Reverse().ToArray(), 0);
+                        gpsData.ExtendedStatus = ReadUInt32BigEndian(infoContent, 0);
                         break;
                     case 0x2A:
-                        gpsData.IOStatus = BitConverter.ToUInt16(infoContent.Reverse().ToArray(), 0);
+                        gpsData.IOStatus = ReadUInt16BigEndian(infoContent, 0);
                         break;
                     case 0x30:
                         gpsData.NetworkSignal = infoContent[0];
@@ -333,7 +331,7 @@ namespace JT808ServerApp
                         gpsData.Satellites = infoContent[0];
                         break;
                     case 0xE3:
-                        gpsData.BatteryVoltage = BitConverter.ToUInt16(infoContent.Reverse().ToArray(), 0) * 0.001;
+                        gpsData.BatteryVoltage = ReadUInt16BigEndian(infoContent, 0) * 0.001;
                         break;
                     default:
                         break;
@@ -351,7 +349,7 @@ namespace JT808ServerApp
 
         private void HandleControlResponse(string deviceId, byte[] msgBody, GpsData gpsData)
         {
-            gpsData.RequestBody = "Handle control response WTF? " + gpsData.RequestBody;
+            gpsData.RequestBody = "Handle control response " + gpsData.RequestBody;
         }
 
         private byte[] HandleTimeSyncRequest(ushort msgSerialNumber, string deviceId, GpsData gpsData)
@@ -366,18 +364,9 @@ namespace JT808ServerApp
 
             var responseData = BuildJT808Message(responseMsgId, deviceId, responseBody.ToArray());
 
-            gpsData.RequestBody = "Handle timesync request" + gpsData.RequestBody;
+            gpsData.RequestBody = "Handle time sync request" + gpsData.RequestBody;
             _gpsWriteRequestLogSingleton.Write(gpsData);
             return responseData;
-        }
-
-        private void SerializeGpsData(GpsData gpsData)
-        {
-            var jsonData = System.Text.Json.JsonSerializer.Serialize(gpsData);
-            lock (_fileLock)
-            {
-                File.AppendAllText("gps_data_log.json", jsonData + Environment.NewLine);
-            }
         }
 
         private byte[] CreateUniversalResponse(ushort msgSerialNumber, ushort msgId, byte result, string deviceId)
@@ -470,6 +459,24 @@ namespace JT808ServerApp
                 bcd[i] = (byte)((highNibble << 4) | lowNibble);
             }
             return bcd;
+        }
+
+        private uint ReadUInt32BigEndian(byte[] buffer, int offset)
+        {
+            return (uint)(
+                (buffer[offset] << 24) |
+                (buffer[offset + 1] << 16) |
+                (buffer[offset + 2] << 8) |
+                buffer[offset + 3]
+            );
+        }
+
+        private ushort ReadUInt16BigEndian(byte[] buffer, int offset)
+        {
+            return (ushort)(
+                (buffer[offset] << 8) |
+                buffer[offset + 1]
+            );
         }
     }
 }

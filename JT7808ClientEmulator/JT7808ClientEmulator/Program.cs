@@ -1,82 +1,88 @@
 ﻿using System;
+using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
-namespace JT7808ClientEmulator
+namespace JT808ClientEmulator
 {
     internal class Program
     {
         static void Main(string[] args)
         {
-            string serverIp = "127.0.0.1"; // Adres IP Twojego serwera
-            int serverPort = 2323; // Port, na którym nasłuchuje Twój serwer JT808
+            string serverIp = "127.0.0.1"; // IP address of your JT808 server
+            int serverPort = 2323; // Port your JT808 server is listening on
 
             try
             {
                 TcpClient client = new TcpClient();
                 client.Connect(serverIp, serverPort);
-                Console.WriteLine("Połączono z serwerem.");
+                Console.WriteLine("Connected to server.");
 
                 NetworkStream stream = client.GetStream();
 
-                // 1. Wyślij wiadomość rejestracji
+                // Send registration message
                 byte[] registrationMessage = BuildRegistrationMessage();
-                SendMessage(stream, registrationMessage, "rejestracji");
+                SendMessage(stream, registrationMessage, "registration");
 
-                // 2. Wyślij wiadomość autoryzacyjną
+                // Send authentication message
                 byte[] authMessage = BuildAuthenticationMessage();
-                SendMessage(stream, authMessage, "autoryzacyjną");
+                SendMessage(stream, authMessage, "authentication");
 
-                // 3. Wyślij raport lokalizacji
+                // Send location report message
                 byte[] locationMessage = BuildLocationReportMessage();
-                SendMessage(stream, locationMessage, "raportu lokalizacji");
+                SendMessage(stream, locationMessage, "location report");
 
-                // 4. Wyślij wiadomość heartbeat
-                byte[] heartbeatMessage = BuildHeartbeatMessage();
-                SendMessage(stream, heartbeatMessage, "heartbeat");
+                // Optionally, send custom messages
+                while (true)
+                {
+                    Console.WriteLine("Do you want to send a custom message? (y/n)");
+                    string input = Console.ReadLine();
+                    if (input.ToLower() != "y")
+                        break;
 
-                // 5. Wyślij wiadomość logout
-                byte[] logoutMessage = BuildLogoutMessage();
-                SendMessage(stream, logoutMessage, "logout");
+                    Console.WriteLine("Enter the message in hex format (e.g., 7E020000...):");
+                    string hexMessage = Console.ReadLine();
+                    byte[] customMessage = Convert.FromBase64String(hexMessage);
+                    SendMessage(stream, customMessage, "custom message");
+                }
 
-                // Zamknij połączenie
+                // Close the connection
                 stream.Close();
                 client.Close();
-                Console.WriteLine("Połączenie zamknięte.");
+                Console.WriteLine("Connection closed.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Błąd: " + ex.Message);
+                Console.WriteLine("Error: " + ex.Message);
             }
 
-            Console.WriteLine("Naciśnij dowolny klawisz, aby zakończyć...");
+            Console.WriteLine("Press any key to exit...");
             Console.ReadKey();
         }
 
         static void SendMessage(NetworkStream stream, byte[] message, string messageType)
         {
-            // Wyślij wiadomość do serwera
+            // Send message to the server
             stream.Write(message, 0, message.Length);
-            Console.WriteLine($"Wysłano wiadomość {messageType}.");
+            Console.WriteLine($"Sent {messageType} message.");
 
-            // Odbierz odpowiedź z serwera
+            // Receive response from the server
             byte[] buffer = new byte[1024];
             int bytesRead = stream.Read(buffer, 0, buffer.Length);
-            Console.WriteLine("Otrzymano odpowiedź od serwera:");
+            Console.WriteLine("Received response from server:");
 
-            // Wyświetl odpowiedź w formacie heksadecymalnym
+            // Display response in hexadecimal format
             Console.WriteLine(BitConverter.ToString(buffer, 0, bytesRead));
 
-            // Opcjonalnie: Dodaj opóźnienie między wiadomościami
+            // Optional: Add delay between messages
             Thread.Sleep(1000);
         }
 
         static byte[] BuildRegistrationMessage()
         {
-            // Konstruuj wiadomość rejestracji zgodnie z protokołem JT808
-            // Message ID: 0x0100 (Registration request)
+            // Construct registration message according to JT808 protocol
             ushort msgId = 0x0100;
 
             // Message Body
@@ -112,118 +118,36 @@ namespace JT7808ClientEmulator
             body.Add(plateColor);
 
             //// License Plate (variable, GBK encoding)
-            //string plateNumber = "W12345";
+            //string plateNumber = "TEST123";
             //byte[] plateNumberBytes = Encoding.GetEncoding("GBK").GetBytes(plateNumber);
             //body.AddRange(plateNumberBytes);
 
             byte[] bodyBytes = body.ToArray();
 
-            // Device ID (BCD[6])
-            string deviceId = "123456789012"; // Przykładowy ID urządzenia (12 cyfr)
-            byte[] deviceIdBCD = StringToBCD(deviceId);
+            // Build the full message
+            byte[] message = BuildJT808Message(msgId, bodyBytes, 1);
 
-            // Serial Number
-            ushort msgSerialNumber = 1;
-
-            // Message Body Properties
-            ushort msgBodyProps = (ushort)bodyBytes.Length;
-
-            // Buduj wiadomość
-            List<byte> message = new List<byte>();
-
-            // Dodaj start flagę
-            message.Add(0x7E);
-
-            // Dodaj Message Header
-            message.Add((byte)(msgId >> 8));
-            message.Add((byte)(msgId & 0xFF));
-            message.Add((byte)(msgBodyProps >> 8));
-            message.Add((byte)(msgBodyProps & 0xFF));
-            message.AddRange(deviceIdBCD);
-            message.Add((byte)(msgSerialNumber >> 8));
-            message.Add((byte)(msgSerialNumber & 0xFF));
-
-            // Dodaj Message Body
-            message.AddRange(bodyBytes);
-
-            // Oblicz sumę kontrolną
-            byte checksum = 0;
-            for (int i = 1; i < message.Count; i++)
-            {
-                checksum ^= message[i];
-            }
-
-            // Dodaj sumę kontrolną
-            message.Add(checksum);
-
-            // Dodaj end flagę
-            message.Add(0x7E);
-
-            // Zwróć wiadomość jako tablicę bajtów
-            return message.ToArray();
+            return message;
         }
 
         static byte[] BuildAuthenticationMessage()
         {
-            // Konstruuj wiadomość autoryzacyjną zgodnie z protokołem JT808
-            // Message ID: 0x0102 (Authentication request)
+            // Construct authentication message according to JT808 protocol
             ushort msgId = 0x0102;
 
             // Message Body
-            string authCode = "AUTH_CODE"; // Kod autoryzacyjny
+            string authCode = "AUTH_CODE"; // Authentication code
             byte[] authCodeBytes = Encoding.ASCII.GetBytes(authCode);
 
-            byte[] bodyBytes = authCodeBytes;
+            // Build the full message
+            byte[] message = BuildJT808Message(msgId, authCodeBytes, 2);
 
-            // Device ID (BCD[6])
-            string deviceId = "123456789012"; // Przykładowy ID urządzenia (12 cyfr)
-            byte[] deviceIdBCD = StringToBCD(deviceId);
-
-            // Serial Number
-            ushort msgSerialNumber = 2;
-
-            // Message Body Properties
-            ushort msgBodyProps = (ushort)bodyBytes.Length;
-
-            // Buduj wiadomość
-            List<byte> message = new List<byte>();
-
-            // Dodaj start flagę
-            message.Add(0x7E);
-
-            // Dodaj Message Header
-            message.Add((byte)(msgId >> 8));
-            message.Add((byte)(msgId & 0xFF));
-            message.Add((byte)(msgBodyProps >> 8));
-            message.Add((byte)(msgBodyProps & 0xFF));
-            message.AddRange(deviceIdBCD);
-            message.Add((byte)(msgSerialNumber >> 8));
-            message.Add((byte)(msgSerialNumber & 0xFF));
-
-            // Dodaj Message Body
-            message.AddRange(bodyBytes);
-
-            // Oblicz sumę kontrolną
-            byte checksum = 0;
-            for (int i = 1; i < message.Count; i++)
-            {
-                checksum ^= message[i];
-            }
-
-            // Dodaj sumę kontrolną
-            message.Add(checksum);
-
-            // Dodaj end flagę
-            message.Add(0x7E);
-
-            // Zwróć wiadomość jako tablicę bajtów
-            return message.ToArray();
+            return message;
         }
 
         static byte[] BuildLocationReportMessage()
         {
-            // Konstruuj wiadomość raportu lokalizacji zgodnie z protokołem JT808
-            // Message ID: 0x0200 (Location report)
+            // Construct location report message according to JT808 protocol
             ushort msgId = 0x0200;
 
             // Message Body
@@ -238,25 +162,29 @@ namespace JT7808ClientEmulator
             body.AddRange(BitConverter.GetBytes(statusFlags).Reverse());
 
             // Latitude (4 bytes)
-            uint latitude = (uint)(22.543096 * 1000000); // Przykładowa szerokość geograficzna
+            Console.WriteLine("Enter latitude (e.g., 51.057589):");
+            double latitudeInput = double.Parse(Console.ReadLine());
+            uint latitude = (uint)(latitudeInput * 1e6);
             body.AddRange(BitConverter.GetBytes(latitude).Reverse());
 
             // Longitude (4 bytes)
-            uint longitude = (uint)(114.057865 * 1000000); // Przykładowa długość geograficzna
+            Console.WriteLine("Enter longitude (e.g., 17.032861):");
+            double longitudeInput = double.Parse(Console.ReadLine());
+            uint longitude = (uint)(longitudeInput * 1e6);
             body.AddRange(BitConverter.GetBytes(longitude).Reverse());
 
             // Altitude (2 bytes)
-            ushort altitude = 10; // W metrach
+            ushort altitude = 10; // In meters
             body.Add((byte)(altitude >> 8));
             body.Add((byte)(altitude & 0xFF));
 
             // Speed (2 bytes)
-            ushort speed = 60; // W km/h
+            ushort speed = 60; // In km/h
             body.Add((byte)(speed >> 8));
             body.Add((byte)(speed & 0xFF));
 
             // Direction (2 bytes)
-            ushort direction = 90; // W stopniach
+            ushort direction = 90; // In degrees
             body.Add((byte)(direction >> 8));
             body.Add((byte)(direction & 0xFF));
 
@@ -265,25 +193,45 @@ namespace JT7808ClientEmulator
             byte[] timeBytes = StringToBCD(time);
             body.AddRange(timeBytes);
 
+            // Additional information (optional)
+            // Uncomment and modify as needed
+            /*
+            // Mileage (0x01)
+            body.Add(0x01); // Info ID
+            body.Add(0x04); // Length
+            uint mileage = 12345; // In meters
+            body.AddRange(BitConverter.GetBytes(mileage).Reverse());
+
+            // Fuel (0x02)
+            body.Add(0x02); // Info ID
+            body.Add(0x02); // Length
+            ushort fuel = 50; // In liters
+            body.Add((byte)(fuel >> 8));
+            body.Add((byte)(fuel & 0xFF));
+            */
+
             byte[] bodyBytes = body.ToArray();
 
+            // Build the full message
+            byte[] message = BuildJT808Message(msgId, bodyBytes, 3);
+
+            return message;
+        }
+
+        static byte[] BuildJT808Message(ushort msgId, byte[] bodyBytes, ushort msgSerialNumber)
+        {
             // Device ID (BCD[6])
-            string deviceId = "123456789012";
+            string deviceId = "123456789012"; // Example device ID (12 digits)
             byte[] deviceIdBCD = StringToBCD(deviceId);
 
-            // Serial Number
-            ushort msgSerialNumber = 3;
-
             // Message Body Properties
-            ushort msgBodyProps = (ushort)bodyBytes.Length;
+            ushort msgBodyProps = (ushort)(bodyBytes.Length & 0x3FF); // Lower 10 bits for length
+            msgBodyProps |= 0x0000; // Set encryption and subpackage bits if needed
 
-            // Buduj wiadomość
+            // Build the message
             List<byte> message = new List<byte>();
 
-            // Dodaj start flagę
-            message.Add(0x7E);
-
-            // Dodaj Message Header
+            // Add Message Header
             message.Add((byte)(msgId >> 8));
             message.Add((byte)(msgId & 0xFF));
             message.Add((byte)(msgBodyProps >> 8));
@@ -292,128 +240,56 @@ namespace JT7808ClientEmulator
             message.Add((byte)(msgSerialNumber >> 8));
             message.Add((byte)(msgSerialNumber & 0xFF));
 
-            // Dodaj Message Body
+            // Add Message Body
             message.AddRange(bodyBytes);
 
-            // Oblicz sumę kontrolną
+            // Calculate checksum
             byte checksum = 0;
-            for (int i = 1; i < message.Count; i++)
+            for (int i = 0; i < message.Count; i++)
             {
                 checksum ^= message[i];
             }
 
-            // Dodaj sumę kontrolną
-            message.Add(checksum);
-
-            // Dodaj end flagę
-            message.Add(0x7E);
-
-            // Zwróć wiadomość jako tablicę bajtów
-            return message.ToArray();
-        }
-
-        static byte[] BuildHeartbeatMessage()
-        {
-            // Konstruuj wiadomość heartbeat zgodnie z protokołem JT808
-            // Message ID: 0x0002 (Heartbeat)
-            ushort msgId = 0x0002;
-
-            // Message Body (brak ciała w heartbeat)
-            byte[] bodyBytes = new byte[0];
-
-            // Device ID (BCD[6])
-            string deviceId = "123456789012";
-            byte[] deviceIdBCD = StringToBCD(deviceId);
-
-            // Serial Number
-            ushort msgSerialNumber = 4;
-
-            // Message Body Properties
-            ushort msgBodyProps = (ushort)bodyBytes.Length;
-
-            // Buduj wiadomość
-            List<byte> message = new List<byte>();
-
-            // Dodaj start flagę
-            message.Add(0x7E);
-
-            // Dodaj Message Header
-            message.Add((byte)(msgId >> 8));
-            message.Add((byte)(msgId & 0xFF));
-            message.Add((byte)(msgBodyProps >> 8));
-            message.Add((byte)(msgBodyProps & 0xFF));
-            message.AddRange(deviceIdBCD);
-            message.Add((byte)(msgSerialNumber >> 8));
-            message.Add((byte)(msgSerialNumber & 0xFF));
-
-            // Brak Message Body
-
-            // Oblicz sumę kontrolną
-            byte checksum = 0;
-            for (int i = 1; i < message.Count; i++)
+            // Perform escaping
+            List<byte> escapedMessage = new List<byte>();
+            escapedMessage.Add(0x7E); // Start flag
+            foreach (byte b in message)
             {
-                checksum ^= message[i];
+                if (b == 0x7E)
+                {
+                    escapedMessage.Add(0x7D);
+                    escapedMessage.Add(0x02);
+                }
+                else if (b == 0x7D)
+                {
+                    escapedMessage.Add(0x7D);
+                    escapedMessage.Add(0x01);
+                }
+                else
+                {
+                    escapedMessage.Add(b);
+                }
             }
 
-            // Dodaj sumę kontrolną
-            message.Add(checksum);
-
-            // Dodaj end flagę
-            message.Add(0x7E);
-
-            return message.ToArray();
-        }
-
-        static byte[] BuildLogoutMessage()
-        {
-            // Konstruuj wiadomość logout zgodnie z protokołem JT808
-            // Message ID: 0x0003 (Terminal Logout)
-            ushort msgId = 0x0003;
-
-            // Message Body (brak ciała w logout)
-            byte[] bodyBytes = new byte[0];
-
-            // Device ID (BCD[6])
-            string deviceId = "123456789012";
-            byte[] deviceIdBCD = StringToBCD(deviceId);
-
-            // Serial Number
-            ushort msgSerialNumber = 5;
-
-            // Message Body Properties
-            ushort msgBodyProps = (ushort)bodyBytes.Length;
-
-            // Buduj wiadomość
-            List<byte> message = new List<byte>();
-
-            // Dodaj start flagę
-            message.Add(0x7E);
-
-            // Dodaj Message Header
-            message.Add((byte)(msgId >> 8));
-            message.Add((byte)(msgId & 0xFF));
-            message.Add((byte)(msgBodyProps >> 8));
-            message.Add((byte)(msgBodyProps & 0xFF));
-            message.AddRange(deviceIdBCD);
-            message.Add((byte)(msgSerialNumber >> 8));
-            message.Add((byte)(msgSerialNumber & 0xFF));
-
-            // Brak Message Body
-
-            // Oblicz sumę kontrolną
-            byte checksum = 0;
-            for (int i = 1; i < message.Count; i++)
+            // Add checksum
+            if (checksum == 0x7E)
             {
-                checksum ^= message[i];
+                escapedMessage.Add(0x7D);
+                escapedMessage.Add(0x02);
+            }
+            else if (checksum == 0x7D)
+            {
+                escapedMessage.Add(0x7D);
+                escapedMessage.Add(0x01);
+            }
+            else
+            {
+                escapedMessage.Add(checksum);
             }
 
-            // Dodaj sumę kontrolną
-            message.Add(checksum);
+            escapedMessage.Add(0x7E); // End flag
 
-            // Dodaj end flagę
-            message.Add(0x7E);
-
-            return message.ToArray();
+            return escapedMessage.ToArray();
         }
 
         static byte[] StringToBCD(string str)
@@ -440,7 +316,31 @@ namespace JT7808ClientEmulator
             else if (hex >= 'a' && hex <= 'f')
                 return hex - 'a' + 10;
             else
-                throw new ArgumentException("Nieprawidłowy znak heksadecymalny");
+                throw new ArgumentException("Invalid hexadecimal character");
+        }
+
+        static byte[] HexStringToByteArray(string hex)
+        {
+            hex = hex.Replace(" ", "");
+            if (hex.Length % 2 != 0)
+                throw new ArgumentException("Hex string must have an even length");
+            byte[] data = new byte[hex.Length / 2];
+            for (int i = 0; i < data.Length; i++)
+            {
+                data[i] = (byte)((GetHexValue(hex[2 * i]) << 4) | GetHexValue(hex[2 * i + 1]));
+            }
+            return data;
+        }
+
+        static byte[] StringToBCD(string str, int length)
+        {
+            // Pads or trims the string to the desired length
+            if (str.Length > length * 2)
+                str = str.Substring(str.Length - length * 2);
+            else if (str.Length < length * 2)
+                str = str.PadLeft(length * 2, '0');
+
+            return StringToBCD(str);
         }
     }
 }
