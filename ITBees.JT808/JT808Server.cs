@@ -201,8 +201,8 @@ namespace JT808ServerApp
                 if (data.Length < 12)
                     return null;
 
-                ushort msgId = (ushort)((data[0] << 8) + data[1]);
-                ushort msgBodyProps = (ushort)((data[2] << 8) + data[3]);
+                ushort msgId = ReadUInt16BigEndian(data, 0);
+                ushort msgBodyProps = ReadUInt16BigEndian(data, 2);
                 string deviceId = BCDToString(data, 4, 6);
                 ushort msgSerialNumber = (ushort)((data[10] << 8) + data[11]);
                 gpsData.DeviceId = deviceId;
