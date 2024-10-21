@@ -1,15 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
 using ITBees.Interfaces.Platforms;
 using ITBees.JT808.Interfaces;
 using Microsoft.Extensions.Logging;
-using Environment = System.Environment;
 
 namespace JT808ServerApp
 {
@@ -248,25 +242,66 @@ namespace JT808ServerApp
             }
         }
 
-        private byte[] HandleTerminalRegistration(ushort msgSerialNumber, string deviceId, byte[] msgBody,
-            GpsData gpsData)
+        private byte[] HandleTerminalRegistration(ushort msgSerialNumber, string deviceId, byte[] msgBody, GpsData gpsData)
         {
             gpsData.RequestBody = "HandleTerminalRegistration" + gpsData.RequestBody;
-            _authorizedDevices[deviceId] = null;
 
+            int index = 0;
+
+            // Parse Province ID (2 bytes)
+            ushort provinceId = ReadUInt16BigEndian(msgBody, index);
+            index += 2;
+
+            // Parse City ID (2 bytes)
+            ushort cityId = ReadUInt16BigEndian(msgBody, index);
+            index += 2;
+
+            // Parse Manufacturer ID (5 bytes)
+            string manufacturerId = Encoding.ASCII.GetString(msgBody, index, 5).Trim('\0');
+            index += 5;
+
+            // Parse Terminal Model (20 bytes)
+            string terminalModel = Encoding.ASCII.GetString(msgBody, index, 20).Trim('\0');
+            index += 20;
+
+            // Parse Terminal ID (7 bytes)
+            string terminalId = Encoding.ASCII.GetString(msgBody, index, 7).Trim('\0');
+            index += 7;
+
+            // Parse License Plate Color (1 byte)
+            byte plateColor = msgBody[index];
+            index += 1;
+
+            // Parse Vehicle Identification Number (Variable length)
+            string vin = Encoding.GetEncoding("GBK").GetString(msgBody, index, msgBody.Length - index);
+
+            // Store the VIN in gpsData or another appropriate data structure
+            gpsData.VIN = vin;
+
+            // Log the registration details
+            _logger.LogInformation($"Terminal Registered: DeviceId={deviceId}, VIN={vin}, TerminalId={terminalId}");
+
+            // Send registration response
             ushort responseMsgId = 0x8100;
             var responseBody = new List<byte>();
 
+            // Add the message serial number from the registration message
             responseBody.Add((byte)(msgSerialNumber >> 8));
             responseBody.Add((byte)(msgSerialNumber & 0xFF));
+
+            // Result: 0 for success
             responseBody.Add(0x00);
-            var authCode = Encoding.ASCII.GetBytes("AUTH_CODE");
-            responseBody.AddRange(authCode);
+
+            // Authentication code (could be dynamically generated)
+            string authCode = "AUTH_CODE";
+            byte[] authCodeBytes = Encoding.ASCII.GetBytes(authCode);
+            responseBody.AddRange(authCodeBytes);
 
             var responseData = BuildJT808Message(responseMsgId, deviceId, responseBody.ToArray());
             _gpsWriteRequestLogSingleton.Write(gpsData);
             return responseData;
         }
+
 
         private byte[] HandleAuthentication(ushort msgSerialNumber, string deviceId, byte[] msgBody, GpsData gpsData)
         {
