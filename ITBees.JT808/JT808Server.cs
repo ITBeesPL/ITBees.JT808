@@ -272,15 +272,22 @@ namespace JT808ServerApp
             byte plateColor = msgBody[index];
             index += 1;
 
-            // Parse Vehicle Identification Number (Variable length)
-            string vin = Encoding.GetEncoding("GBK").GetString(msgBody, index, msgBody.Length - index);
+            try
+            {
+                // Parse Vehicle Identification Number (Variable length)
+                string vin = Encoding.GetEncoding("GBK").GetString(msgBody, index, msgBody.Length - index);
 
-            // Store the VIN in gpsData or another appropriate data structure
-            gpsData.VIN = vin;
+                // Store the VIN in gpsData or another appropriate data structure
+                gpsData.VIN = vin;
 
-            // Log the registration details
-            _logger.LogInformation($"Terminal Registered: DeviceId={deviceId}, VIN={vin}, TerminalId={terminalId}");
-
+                _logger.LogInformation($"Terminal Registered: DeviceId={deviceId}, VIN={vin}, TerminalId={terminalId}");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
+            
             // Send registration response
             ushort responseMsgId = 0x8100;
             var responseBody = new List<byte>();

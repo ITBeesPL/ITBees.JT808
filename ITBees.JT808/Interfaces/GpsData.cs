@@ -1,13 +1,10 @@
-﻿using System.Security.Principal;
-using JT808ServerApp.Setup;
-
-namespace ITBees.JT808.Interfaces;
+﻿namespace ITBees.JT808.Interfaces;
 
 public class GpsData
 {
     public int Id { get; set; }
     public string DeviceId { get; set; }
-    public string VIN { get; set; }
+    public string? VIN { get; set; }
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public double Speed { get; set; }
