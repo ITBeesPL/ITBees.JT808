@@ -24,6 +24,7 @@ namespace JT808ServerApp
             IGpsDeviceAuthorizationSingleton gpsDeviceAuthorizationSingleton,
             ILogger<JT808Server> logger)
         {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             _platformSettingsService = platformSettingsService;
             _gpsWriteRequestLogSingleton = gpsWriteRequestLogSingleton;
             _gpsDeviceAuthorizationSingleton = gpsDeviceAuthorizationSingleton;
