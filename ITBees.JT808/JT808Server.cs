@@ -189,7 +189,7 @@ namespace JT808ServerApp
         private byte[] HandleMessage(byte[] data, TcpClient client)
         {
             string base64String = Convert.ToBase64String(data);
-            var gpsData = new GpsData() { RequestBody = base64String, Received = DateTime.Now};
+            var gpsData = new GpsData() { RequestBody = base64String, Received = DateTime.Now };
 
             try
             {
@@ -288,7 +288,7 @@ namespace JT808ServerApp
                 Console.WriteLine(e);
                 throw;
             }
-            
+
             // Send registration response
             ushort responseMsgId = 0x8100;
             var responseBody = new List<byte>();
@@ -297,8 +297,12 @@ namespace JT808ServerApp
             responseBody.Add((byte)(msgSerialNumber >> 8));
             responseBody.Add((byte)(msgSerialNumber & 0xFF));
 
+            var isAuthorized = _gpsDeviceAuthorizationSingleton.IsAuthorized(deviceId, terminalModel, terminalId, gpsData.VIN);
             // Result: 0 for success
-            responseBody.Add(0x00);
+            if (isAuthorized)
+                responseBody.Add(0x00);
+            else
+                responseBody.Add(0x01);
 
             // Authentication code (could be dynamically generated)
             string authCode = "AUTH_CODE";

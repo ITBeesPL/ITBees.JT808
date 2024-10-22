@@ -2,5 +2,5 @@
 
 public interface IGpsDeviceAuthorizationSingleton
 {
-    bool IsAuthorized(string deviceId);
+    bool IsAuthorized(string deviceId, string terminalModel, string terminalId, string gpsDataVin);
 }

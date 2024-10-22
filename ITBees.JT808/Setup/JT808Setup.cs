@@ -7,7 +7,7 @@ namespace JT808ServerApp.Setup;
 
 public class JT808Setup : ITBees.FAS.Setup.IFasDependencyRegistration
 {
-    public void Register(IServiceCollection services, IConfigurationRoot configurationRoot) 
+    public void Register(IServiceCollection services, IConfigurationRoot configurationRoot)
     {
         if (services.Any(descriptor =>
                 descriptor.ServiceType == typeof(IGpsDeviceAuthorizationSingleton)) == false)
@@ -32,6 +32,13 @@ public class JT808Setup : ITBees.FAS.Setup.IFasDependencyRegistration
     public static void RegisterDbModels(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<GpsData>();
+        modelBuilder.Entity<UnauthorizedGpsDevice>().HasKey(x => x.Id);
+        modelBuilder.Entity<UnauthorizedGpsDevice>().HasIndex(x => x.DeviceId).IsUnique();
+        modelBuilder.Entity<UnauthorizedGpsDevice>(entity =>
+        {
+            entity.OwnsOne(e => e.LatestGpsLocation);
+        });
+
         modelBuilder.Entity<GpsDevice>().HasKey(x => x.Guid);
         modelBuilder.Entity<GpsDevice>(entity =>
         {

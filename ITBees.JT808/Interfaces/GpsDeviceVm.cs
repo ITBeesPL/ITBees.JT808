@@ -17,7 +17,7 @@ public class GpsDeviceVm
         CompanyGuid = x.CompanyGuid;
         IsAllowed = x.IsAllowed;
         CreatedBy = x.CreatedBy?.DisplayName;
-        LatestGpsLocation = new GpsLocationVm(x.LatestGpsLocation);
+        LatestGpsLocation = x.LatestGpsLocation == null ? null : new GpsLocationVm(x.LatestGpsLocation);
         PhoneNumber = x.PhoneNumber;
     }
 

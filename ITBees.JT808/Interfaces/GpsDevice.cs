@@ -14,5 +14,7 @@ public class GpsDevice
     public bool IsAllowed { get; set; }
     public UserAccount CreatedBy { get; set; }
     public GpsLocation? LatestGpsLocation { get; set; }
-    public string PhoneNumber { get; set; }
+    public string? PhoneNumber { get; set; }
+    public Guid CreatedByGuid { get; set; }
+    public Guid? VehicleGuid { get; set; }
 }
