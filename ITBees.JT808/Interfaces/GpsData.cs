@@ -23,4 +23,5 @@ public class GpsData
     public Guid? GpsDeviceGuid { get; set; }
     public string? RequestBody { get; set; }
     public DateTime Received { get; set; }
+    public bool Handled { get; set; }
 }
