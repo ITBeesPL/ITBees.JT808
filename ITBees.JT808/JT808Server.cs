@@ -77,16 +77,22 @@ namespace JT808ServerApp
                             var messageBytes = byteList.Skip(startIndex).Take(endIndex - startIndex + 1).ToArray();
                             byteList.RemoveRange(0, endIndex + 1);
 
+                            Console.WriteLine($"Received message (hex): {BitConverter.ToString(messageBytes)}");
+
+                            string base64Message = Convert.ToBase64String(messageBytes);
+                            Console.WriteLine($"received message (Base64): {base64Message}");
+
                             var data = ProcessJT808Message(messageBytes);
                             if (data != null)
                             {
-                                var response = HandleMessage(data, client);
+                                var response = HandleMessage(data, client, base64Message);
                                 if (response != null)
                                 {
                                     await networkStream.WriteAsync(response, 0, response.Length);
                                 }
                             }
                         }
+
                     }
                 }
             }
@@ -186,10 +192,10 @@ namespace JT808ServerApp
             return result.ToArray();
         }
 
-        private byte[] HandleMessage(byte[] data, TcpClient client)
+        private byte[] HandleMessage(byte[] data, TcpClient client, string base64Message)
         {
             string base64String = Convert.ToBase64String(data);
-            var gpsData = new GpsData() { RequestBody = base64String, Received = DateTime.Now };
+            var gpsData = new GpsData() { RequestBody = $" {base64String} - '{base64Message}'", Received = DateTime.Now };
 
             try
             {
