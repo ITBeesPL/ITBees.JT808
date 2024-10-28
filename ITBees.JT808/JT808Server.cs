@@ -217,7 +217,7 @@ namespace JT808ServerApp
                     case 0x0102:
                         return HandleAuthentication(msgSerialNumber, deviceId, msgBody, gpsData);
                     case 0x0002:
-                        gpsData.RequestBody = "Create universal response " + gpsData.RequestBody;
+                        gpsData.RequestBody = "Heartbeat " + gpsData.RequestBody;
                         _gpsWriteRequestLogSingleton.Write(gpsData);
                         return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
                     case 0x0200:
@@ -235,6 +235,9 @@ namespace JT808ServerApp
                         return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
                     case 0x0F01:
                         return HandleTimeSyncRequest(msgSerialNumber, deviceId, gpsData);
+                    case 0x0900:
+                        HandleDataUpstreamPassThrough(deviceId, msgBody, gpsData);
+                        return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
                     default:
                         gpsData.RequestBody = "Default not handled case - take a look at it " + gpsData.RequestBody;
                         _gpsWriteRequestLogSingleton.Write(gpsData);
@@ -247,6 +250,19 @@ namespace JT808ServerApp
                 _logger.LogError(e, base64String);
                 throw e;
             }
+        }
+
+        private void HandleDataUpstreamPassThrough(string deviceId, byte[] msgBody, GpsData gpsData)
+        {
+            byte type = msgBody[0];
+            byte[] content = msgBody.Skip(1).ToArray();
+
+            Console.WriteLine($"Data Upstream Pass-Through Type: {type:X2}");
+            Console.WriteLine($"Content (hex): {BitConverter.ToString(content)}");
+            gpsData.RequestBody =
+                $"HandleDataUpstreamPassThrough Data Upstream Pass-Through Type: {type:X2} , Content (hex): {BitConverter.ToString(content)} {gpsData.RequestBody}";
+
+            _gpsWriteRequestLogSingleton.Write(gpsData);
         }
 
         private byte[] HandleTerminalRegistration(ushort msgSerialNumber, string deviceId, byte[] msgBody, GpsData gpsData)
@@ -526,10 +542,7 @@ namespace JT808ServerApp
 
         private ushort ReadUInt16BigEndian(byte[] buffer, int offset)
         {
-            return (ushort)(
-                (buffer[offset] << 8) |
-                buffer[offset + 1]
-            );
+            return (ushort)((buffer[offset] << 8) | buffer[offset + 1]);
         }
     }
 }
