@@ -195,7 +195,7 @@ namespace JT808ServerApp
         private byte[] HandleMessage(byte[] data, TcpClient client, string base64Message)
         {
             string base64String = Convert.ToBase64String(data);
-            var gpsData = new GpsData() { RequestBody = $" {base64String} - '{base64Message}'", Received = DateTime.Now };
+            var gpsData = new GpsData() { RequestBody = $" '{base64String}' - '{base64Message}'", Received = DateTime.Now };
 
             try
             {
@@ -224,7 +224,7 @@ namespace JT808ServerApp
                         HandleLocationReport(deviceId, msgBody, gpsData);
                         return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
                     case 0x0001:
-                        gpsData.RequestBody = "Break - 0x0001" + gpsData.RequestBody;
+                        gpsData.RequestBody = "Break - 0x0001 " + gpsData.RequestBody;
                         _gpsWriteRequestLogSingleton.Write(gpsData);
                         break;
                     case 0x0300:
@@ -236,7 +236,7 @@ namespace JT808ServerApp
                     case 0x0F01:
                         return HandleTimeSyncRequest(msgSerialNumber, deviceId, gpsData);
                     default:
-                        gpsData.RequestBody = "Default not handled case - take a look at it" + gpsData.RequestBody;
+                        gpsData.RequestBody = "Default not handled case - take a look at it " + gpsData.RequestBody;
                         _gpsWriteRequestLogSingleton.Write(gpsData);
                         return CreateUniversalResponse(msgSerialNumber, msgId, 3, deviceId);
                 }
