@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 using ITBees.Interfaces.Platforms;
 using ITBees.JT808.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -256,13 +257,24 @@ namespace JT808ServerApp
             byte type = msgBody[0];
             byte[] content = msgBody.Skip(1).ToArray();
 
-            Console.WriteLine($"Data Upstream Pass-Through Type: {type:X2}");
-            Console.WriteLine($"Content (hex): {BitConverter.ToString(content)}");
+            string contentString = Encoding.GetEncoding("GBK").GetString(content);
+
+            // Szukaj numeru VIN w treści
+            string vinPattern = @"[A-HJ-NPR-Z0-9]{17}";
+            var matches = Regex.Matches(contentString, vinPattern);
+            if (matches.Count > 0)
+            {
+                string vin = matches[0].Value;
+                gpsData.VIN = vin;
+                Console.WriteLine($"Extracted VIN: {vin}");
+            }
+
             gpsData.RequestBody =
-                $"HandleDataUpstreamPassThrough Data Upstream Pass-Through Type: {type:X2} , Content (hex): {BitConverter.ToString(content)} {gpsData.RequestBody}";
+                $"HandleDataUpstreamPassThrough Data Upstream Pass-Through Type: {type:X2} , Content (string): {contentString} {gpsData.RequestBody}";
 
             _gpsWriteRequestLogSingleton.Write(gpsData);
         }
+
 
         private byte[] HandleTerminalRegistration(ushort msgSerialNumber, string deviceId, byte[] msgBody, GpsData gpsData)
         {
