@@ -24,4 +24,8 @@ public class GpsData
     public string? RequestBody { get; set; }
     public DateTime Received { get; set; }
     public bool Handled { get; set; }
+    public string? ManufacturerId { get; set; }
+    public  string? TerminalModel { get; set; }
+    public string? TerminalId { get; set; }
+    public byte? PlateColor { get; set; }
 }

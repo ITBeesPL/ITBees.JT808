@@ -92,7 +92,6 @@ namespace JT808ServerApp
                                 }
                             }
                         }
-
                     }
                 }
             }
@@ -271,62 +270,55 @@ namespace JT808ServerApp
 
             int index = 0;
 
-            // Parse Province ID (2 bytes)
             ushort provinceId = ReadUInt16BigEndian(msgBody, index);
             index += 2;
 
-            // Parse City ID (2 bytes)
             ushort cityId = ReadUInt16BigEndian(msgBody, index);
             index += 2;
 
-            // Parse Manufacturer ID (5 bytes)
             string manufacturerId = Encoding.ASCII.GetString(msgBody, index, 5).Trim('\0');
             index += 5;
 
-            // Parse Terminal Model (20 bytes)
             string terminalModel = Encoding.ASCII.GetString(msgBody, index, 20).Trim('\0');
             index += 20;
 
-            // Parse Terminal ID (7 bytes)
             string terminalId = Encoding.ASCII.GetString(msgBody, index, 7).Trim('\0');
             index += 7;
 
-            // Parse License Plate Color (1 byte)
             byte plateColor = msgBody[index];
             index += 1;
 
-            try
+            string vin = string.Empty;
+            if (index < msgBody.Length)
             {
-                // Parse Vehicle Identification Number (Variable length)
-                string vin = Encoding.GetEncoding("GBK").GetString(msgBody, index, msgBody.Length - index);
-
-                // Store the VIN in gpsData or another appropriate data structure
+                vin = Encoding.GetEncoding("GBK").GetString(msgBody, index, msgBody.Length - index).Trim('\0');
                 gpsData.VIN = vin;
-
-                _logger.LogInformation($"Terminal Registered: DeviceId={deviceId}, VIN={vin}, TerminalId={terminalId}");
             }
-            catch (Exception e)
+            else
             {
-                Console.WriteLine(e);
-                throw;
+                gpsData.VIN = string.Empty;
             }
 
-            // Send registration response
+            gpsData.ManufacturerId = manufacturerId;
+            gpsData.TerminalModel = terminalModel;
+            gpsData.TerminalId = terminalId;
+            gpsData.PlateColor = plateColor;
+
+            _logger.LogInformation($"Terminal Registered: DeviceId={deviceId}, VIN={gpsData.VIN}, TerminalId={terminalId}");
+
             ushort responseMsgId = 0x8100;
             var responseBody = new List<byte>();
 
-            // Add the message serial number from the registration message
             responseBody.Add((byte)(msgSerialNumber >> 8));
             responseBody.Add((byte)(msgSerialNumber & 0xFF));
 
             var isAuthorized = _gpsDeviceAuthorizationSingleton.IsAuthorized(deviceId, terminalModel, terminalId, gpsData.VIN);
-            // Result: 0 for success
+
             if (isAuthorized)
                 responseBody.Add(0x00);
             else
                 responseBody.Add(0x01);
 
-            // Authentication code (could be dynamically generated)
             string authCode = "AUTH_CODE";
             byte[] authCodeBytes = Encoding.ASCII.GetBytes(authCode);
             responseBody.AddRange(authCodeBytes);
@@ -335,7 +327,6 @@ namespace JT808ServerApp
             _gpsWriteRequestLogSingleton.Write(gpsData);
             return responseData;
         }
-
 
         private byte[] HandleAuthentication(ushort msgSerialNumber, string deviceId, byte[] msgBody, GpsData gpsData)
         {
@@ -377,8 +368,15 @@ namespace JT808ServerApp
             int index = 0;
             while (index < data.Length)
             {
+                if (index + 2 > data.Length)
+                    break;
+
                 byte infoId = data[index++];
                 byte infoLength = data[index++];
+
+                if (index + infoLength > data.Length)
+                    break;
+
                 byte[] infoContent = data.Skip(index).Take(infoLength).ToArray();
                 index += infoLength;
 
@@ -426,7 +424,7 @@ namespace JT808ServerApp
             ushort responseMsgId = 0x8F01;
             var responseBody = new List<byte>();
 
-            responseBody.Add(0x01); // Result: success
+            responseBody.Add(0x01);
             var time = DateTime.UtcNow.ToString("yyMMddHHmmss");
             var timeBytes = StringToBCD(time, 6);
             responseBody.AddRange(timeBytes);
