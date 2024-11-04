@@ -9,4 +9,5 @@ public interface IGpsWriteRequestLogSingleton
     /// <returns></returns>
     int Write(GpsData gpsData);
     void Update (GpsData gpsData);
+    void UpdateHeartBeat(GpsData gpsData);
 }

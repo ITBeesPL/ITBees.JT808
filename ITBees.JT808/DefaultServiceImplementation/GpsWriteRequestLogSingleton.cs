@@ -9,6 +9,11 @@ public class GpsWriteRequestLogSingleton : IGpsWriteRequestLogSingleton
         throw new NotImplementedException();
     }
 
+    public void UpdateHeartBeat(GpsData gpsData)
+    {
+        throw new NotImplementedException();
+    }
+
     int IGpsWriteRequestLogSingleton.Write(GpsData gpsData)
     {
         throw new NotImplementedException();

@@ -219,7 +219,7 @@ namespace JT808ServerApp
                         return HandleAuthentication(msgSerialNumber, deviceId, msgBody, gpsData);
                     case 0x0002:
                         gpsData.RequestBody = "Heartbeat " + gpsData.RequestBody;
-                        _gpsWriteRequestLogSingleton.Write(gpsData);
+                        _gpsWriteRequestLogSingleton.UpdateHeartBeat(gpsData);
                         return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
                     case 0x0200:
                         HandleLocationReport(deviceId, msgBody, gpsData);
@@ -258,23 +258,38 @@ namespace JT808ServerApp
             byte type = msgBody[0];
             byte[] content = msgBody.Skip(1).ToArray();
 
-            string contentString = Encoding.GetEncoding("GBK").GetString(content);
-
-            // Szukaj numeru VIN w treści
-            string vinPattern = @"[A-HJ-NPR-Z0-9]{17}";
-            var matches = Regex.Matches(contentString, vinPattern);
-            if (matches.Count > 0)
+            if (type == 0xF8)
             {
-                string vin = matches[0].Value;
-                gpsData.VIN = vin;
-                Console.WriteLine($"Extracted VIN: {vin}");
+                string contentString = Encoding.GetEncoding("GBK").GetString(content);
+
+                string vinPattern = @"[A-HJ-NPR-Z0-9]{17}";
+                var matches = Regex.Matches(contentString, vinPattern);
+                if (matches.Count > 0)
+                {
+                    string vin = matches[0].Value;
+
+                    if (vin.StartsWith("R"))
+                    {
+                        vin = vin.Substring(1);
+                    }
+
+                    gpsData.VIN = vin;
+                    Console.WriteLine($"Extracted VIN: {vin}");
+                }
+
+                gpsData.RequestBody =
+                    $"HandleDataUpstreamPassThrough Data Upstream Pass-Through Type: {type:X2} , Content (string): {contentString} {gpsData.RequestBody}";
+                gpsData.StartJourney = true;
+
+                _gpsWriteRequestLogSingleton.Write(gpsData);
             }
+            else
+            {
+                gpsData.RequestBody =
+                    $"HandleDataUpstreamPassThrough Data Upstream Pass-Through Type: {type:X2} , Content (hex): {BitConverter.ToString(content)} {gpsData.RequestBody}";
 
-            gpsData.RequestBody =
-                $"HandleDataUpstreamPassThrough Data Upstream Pass-Through Type: {type:X2} , Content (string): {contentString} {gpsData.RequestBody}";
-            gpsData.StartJourney = true;
-
-            _gpsWriteRequestLogSingleton.Write(gpsData);
+                _gpsWriteRequestLogSingleton.Write(gpsData);
+            }
         }
 
 
@@ -302,16 +317,16 @@ namespace JT808ServerApp
             byte plateColor = msgBody[index];
             index += 1;
 
-            string vin = string.Empty;
-            if (index < msgBody.Length)
-            {
-                vin = Encoding.GetEncoding("GBK").GetString(msgBody, index, msgBody.Length - index).Trim('\0');
-                gpsData.VIN = vin;
-            }
-            else
-            {
-                gpsData.VIN = string.Empty;
-            }
+            //string vin = string.Empty;
+            //if (index < msgBody.Length)
+            //{
+            //    vin = Encoding.GetEncoding("GBK").GetString(msgBody, index, msgBody.Length - index).Trim('\0');
+            //    gpsData.VIN = vin;
+            //}
+            //else
+            //{
+            //    gpsData.VIN = string.Empty;
+            //}
 
             gpsData.ManufacturerId = manufacturerId;
             gpsData.TerminalModel = terminalModel;
