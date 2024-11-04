@@ -11,6 +11,7 @@ namespace JT808ClientEmulator
     {
         static void Main(string[] args)
         {
+            //string serverIp = "devapi.kilometrowka.net"; // IP address of your JT808 server
             string serverIp = "127.0.0.1"; // IP address of your JT808 server
             int serverPort = 2323; // Port your JT808 server is listening on
 
@@ -21,18 +22,19 @@ namespace JT808ClientEmulator
                 Console.WriteLine("Connected to server.");
 
                 NetworkStream stream = client.GetStream();
+                //stream.ReadTimeout = 4000;
 
                 // Send registration message
-                byte[] registrationMessage = BuildRegistrationMessage();
-                SendMessage(stream, registrationMessage, "registration");
+                //byte[] registrationMessage = BuildRegistrationMessage();
+                //SendMessage(stream, registrationMessage, "registration");
 
                 // Send authentication message
-                byte[] authMessage = BuildAuthenticationMessage();
-                SendMessage(stream, authMessage, "authentication");
+                //byte[] authMessage = BuildAuthenticationMessage();
+                //SendMessage(stream, authMessage, "authentication");
 
                 // Send location report message
-                byte[] locationMessage = BuildLocationReportMessage();
-                SendMessage(stream, locationMessage, "location report");
+                //byte[] locationMessage = BuildLocationReportMessage();
+                //SendMessage(stream, locationMessage, "location report");
 
                 // Optionally, send custom messages
                 while (true)
@@ -43,9 +45,19 @@ namespace JT808ClientEmulator
                         break;
 
                     Console.WriteLine("Enter the message in hex format (e.g., 7E020000...):");
-                    string hexMessage = Console.ReadLine();
-                    byte[] customMessage = Convert.FromBase64String(hexMessage);
-                    SendMessage(stream, customMessage, "custom message");
+                    string base64Message = Console.ReadLine();
+                    try
+                    {
+                        byte[] customMessage2 = Convert.FromBase64String(base64Message);
+                        Console.WriteLine($"Custom message length: {customMessage2.Length}");
+                        Console.WriteLine($"Custom message bytes: {BitConverter.ToString(customMessage2)}");
+                        SendMessage(stream, customMessage2, "custom message", false);
+                    }
+                    catch (FormatException)
+                    {
+                        Console.WriteLine("Invalid Base64 string. Please try again.");
+                        continue;
+                    }
                 }
 
                 // Close the connection
@@ -62,21 +74,38 @@ namespace JT808ClientEmulator
             Console.ReadKey();
         }
 
-        static void SendMessage(NetworkStream stream, byte[] message, string messageType)
+        static void SendMessage(NetworkStream stream, byte[] message, string messageType, bool expectResponse = true)
         {
-            // Send message to the server
-            stream.Write(message, 0, message.Length);
-            Console.WriteLine($"Sent {messageType} message.");
+            try
+            {
+                stream.Write(message, 0, message.Length);
+                Console.WriteLine($"Sent {messageType} message.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sending message: {ex.Message}");
+                return;
+            }
 
-            // Receive response from the server
-            byte[] buffer = new byte[1024];
-            int bytesRead = stream.Read(buffer, 0, buffer.Length);
-            Console.WriteLine("Received response from server:");
+            if (expectResponse)
+            {
+                byte[] buffer = new byte[1024];
+                try
+                {
+                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                    Console.WriteLine("Received response from server:");
+                    Console.WriteLine(BitConverter.ToString(buffer, 0, bytesRead));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error reading response: {ex.Message}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("No response expected from server.");
+            }
 
-            // Display response in hexadecimal format
-            Console.WriteLine(BitConverter.ToString(buffer, 0, bytesRead));
-
-            // Optional: Add delay between messages
             Thread.Sleep(1000);
         }
 
@@ -99,17 +128,17 @@ namespace JT808ClientEmulator
             body.Add((byte)(cityId & 0xFF));
 
             // Manufacturer ID (5 bytes)
-            string manufacturerId = "ABCDE";
+            string manufacturerId = "1ABCDE";
             byte[] manufacturerIdBytes = Encoding.ASCII.GetBytes(manufacturerId.PadRight(5, '\0'));
             body.AddRange(manufacturerIdBytes);
 
             // Terminal Model (20 bytes)
-            string terminalModel = "JT808Client";
+            string terminalModel = "1JT808Client";
             byte[] terminalModelBytes = Encoding.ASCII.GetBytes(terminalModel.PadRight(20, '\0'));
             body.AddRange(terminalModelBytes);
 
             // Terminal ID (7 bytes)
-            string terminalId = "1234567";
+            string terminalId = "01234567";
             byte[] terminalIdBytes = Encoding.ASCII.GetBytes(terminalId.PadRight(7, '\0'));
             body.AddRange(terminalIdBytes);
 
@@ -221,7 +250,7 @@ namespace JT808ClientEmulator
         static byte[] BuildJT808Message(ushort msgId, byte[] bodyBytes, ushort msgSerialNumber)
         {
             // Device ID (BCD[6])
-            string deviceId = "123456789012"; // Example device ID (12 digits)
+            string deviceId = "69243200844"; // Example device ID (12 digits)
             byte[] deviceIdBCD = StringToBCD(deviceId);
 
             // Message Body Properties
