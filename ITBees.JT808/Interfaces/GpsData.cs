@@ -28,4 +28,6 @@ public class GpsData
     public  string? TerminalModel { get; set; }
     public string? TerminalId { get; set; }
     public byte? PlateColor { get; set; }
+    public bool StartJourney { get; set; }
+    public string MessageHex { get; set; }
 }

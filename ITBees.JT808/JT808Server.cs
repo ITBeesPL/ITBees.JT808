@@ -209,6 +209,7 @@ namespace JT808ServerApp
                 gpsData.DeviceId = deviceId;
                 var msgBody = new byte[data.Length - 12];
                 Array.Copy(data, 12, msgBody, 0, msgBody.Length);
+                gpsData.MessageHex = BitConverter.ToString(msgBody);
 
                 switch (msgId)
                 {
@@ -271,6 +272,7 @@ namespace JT808ServerApp
 
             gpsData.RequestBody =
                 $"HandleDataUpstreamPassThrough Data Upstream Pass-Through Type: {type:X2} , Content (string): {contentString} {gpsData.RequestBody}";
+            gpsData.StartJourney = true;
 
             _gpsWriteRequestLogSingleton.Write(gpsData);
         }
