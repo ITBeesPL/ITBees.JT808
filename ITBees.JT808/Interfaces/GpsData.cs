@@ -30,4 +30,7 @@ public class GpsData
     public byte? PlateColor { get; set; }
     public bool StartJourney { get; set; }
     public string MessageHex { get; set; }
+    public string? StartLocationName { get; set; }
+    public string? EndLocationName { get; set; }
+    public string? ReasonForTravel { get; set; }
 }
