@@ -379,6 +379,7 @@ namespace JT808ServerApp
             gpsData.DeviceId = deviceId;
             gpsData.Latitude = latitude / 1e6;
             gpsData.Longitude = longitude / 1e6;
+            gpsData.Altitude = altitude;
             gpsData.Speed = speed / 10.0;
             gpsData.Direction = direction;
             gpsData.Timestamp = DateTime.ParseExact(time, "yyMMddHHmmss", null);
