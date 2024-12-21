@@ -17,7 +17,7 @@ public class JT808Setup : ITBees.FAS.Setup.IFasDependencyRegistration
         };
 
         if (services.Any(descriptor =>
-                descriptor.ServiceType == typeof(IGpsWriteRequestLogSingleton)) == false)
+                descriptor.ServiceType == typeof(IGpsWriteRequestLogSingleton<>)) == false)
         {
             throw new Exception(
                 "You must implement and register IGpsWriteRequestLogSingleton interface for proper work fas payment module");
@@ -31,16 +31,9 @@ public class JT808Setup : ITBees.FAS.Setup.IFasDependencyRegistration
 
     public static void RegisterDbModels(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<GpsData>();
         modelBuilder.Entity<UnauthorizedGpsDevice>().HasKey(x => x.Id);
         modelBuilder.Entity<UnauthorizedGpsDevice>().HasIndex(x => x.DeviceId).IsUnique();
         modelBuilder.Entity<UnauthorizedGpsDevice>(entity =>
-        {
-            entity.OwnsOne(e => e.LatestGpsLocation);
-        });
-
-        modelBuilder.Entity<GpsDevice>().HasKey(x => x.Guid);
-        modelBuilder.Entity<GpsDevice>(entity =>
         {
             entity.OwnsOne(e => e.LatestGpsLocation);
         });

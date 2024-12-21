@@ -8,12 +8,12 @@ using Microsoft.Extensions.Logging;
 
 namespace JT808ServerApp
 {
-    public class JT808Server : IJT808Server
+    public class JT808Server<T> : IJT808Server<T> where T : GpsData, new()
     {
         private readonly IPlatformSettingsService _platformSettingsService;
-        private readonly IGpsWriteRequestLogSingleton _gpsWriteRequestLogSingleton;
+        private readonly IGpsWriteRequestLogSingleton<T> _gpsWriteRequestLogSingleton;
         private readonly IGpsDeviceAuthorizationSingleton _gpsDeviceAuthorizationSingleton;
-        private readonly ILogger<JT808Server> _logger;
+        private readonly ILogger<JT808Server<T>> _logger;
         private readonly int _port;
         private TcpListener _listener;
         private readonly object _fileLock = new object();
@@ -21,9 +21,9 @@ namespace JT808ServerApp
         private ushort _serialNumber = 0;
 
         public JT808Server(IPlatformSettingsService platformSettingsService,
-            IGpsWriteRequestLogSingleton gpsWriteRequestLogSingleton,
+            IGpsWriteRequestLogSingleton<T> gpsWriteRequestLogSingleton,
             IGpsDeviceAuthorizationSingleton gpsDeviceAuthorizationSingleton,
-            ILogger<JT808Server> logger)
+            ILogger<JT808Server<T>> logger)
         {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             _platformSettingsService = platformSettingsService;
@@ -195,7 +195,7 @@ namespace JT808ServerApp
         private byte[] HandleMessage(byte[] data, TcpClient client, string base64Message)
         {
             string base64String = Convert.ToBase64String(data);
-            var gpsData = new GpsData() { RequestBody = $" '{base64String}' - '{base64Message}'", Received = DateTime.Now };
+            var gpsData = new T() { RequestBody = $" '{base64String}' - '{base64Message}'", Received = DateTime.Now };
 
             try
             {
@@ -253,7 +253,7 @@ namespace JT808ServerApp
             }
         }
 
-        private void HandleDataUpstreamPassThrough(string deviceId, byte[] msgBody, GpsData gpsData)
+        private void HandleDataUpstreamPassThrough(string deviceId, byte[] msgBody, T gpsData)
         {
             byte type = msgBody[0];
             byte[] content = msgBody.Skip(1).ToArray();
@@ -293,7 +293,7 @@ namespace JT808ServerApp
         }
 
 
-        private byte[] HandleTerminalRegistration(ushort msgSerialNumber, string deviceId, byte[] msgBody, GpsData gpsData)
+        private byte[] HandleTerminalRegistration(ushort msgSerialNumber, string deviceId, byte[] msgBody, T gpsData)
         {
             gpsData.RequestBody = "HandleTerminalRegistration" + gpsData.RequestBody;
 
@@ -357,7 +357,7 @@ namespace JT808ServerApp
             return responseData;
         }
 
-        private byte[] HandleAuthentication(ushort msgSerialNumber, string deviceId, byte[] msgBody, GpsData gpsData)
+        private byte[] HandleAuthentication(ushort msgSerialNumber, string deviceId, byte[] msgBody, T gpsData)
         {
             var authCode = Encoding.ASCII.GetString(msgBody);
             gpsData.RequestBody = "Handle authentication" + gpsData.RequestBody;
@@ -365,7 +365,7 @@ namespace JT808ServerApp
             return CreateUniversalResponse(msgSerialNumber, 0x0102, 0, deviceId);
         }
 
-        private void HandleLocationReport(string deviceId, byte[] msgBody, GpsData gpsData)
+        private void HandleLocationReport(string deviceId, byte[] msgBody, T gpsData)
         {
             uint alarmFlag = ReadUInt32BigEndian(msgBody, 0);
             uint status = ReadUInt32BigEndian(msgBody, 4);
@@ -436,7 +436,7 @@ namespace JT808ServerApp
             }
         }
 
-        private void HandleTextMessage(string deviceId, byte[] msgBody, GpsData gpsData)
+        private void HandleTextMessage(string deviceId, byte[] msgBody, T gpsData)
         {
             var message = Encoding.GetEncoding("GBK").GetString(msgBody);
 
@@ -449,7 +449,7 @@ namespace JT808ServerApp
             gpsData.RequestBody = "Handle control response " + gpsData.RequestBody;
         }
 
-        private byte[] HandleTimeSyncRequest(ushort msgSerialNumber, string deviceId, GpsData gpsData)
+        private byte[] HandleTimeSyncRequest(ushort msgSerialNumber, string deviceId, T gpsData)
         {
             ushort responseMsgId = 0x8F01;
             var responseBody = new List<byte>();

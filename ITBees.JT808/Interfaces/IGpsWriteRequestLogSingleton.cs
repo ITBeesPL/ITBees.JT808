@@ -1,13 +1,13 @@
 ﻿namespace ITBees.JT808.Interfaces;
 
-public interface IGpsWriteRequestLogSingleton
+public interface IGpsWriteRequestLogSingleton<T> where T: GpsData
 {
     /// <summary>
     /// Saves log entry, and return log Id
     /// </summary>
     /// <param name="gpsData"></param>
     /// <returns></returns>
-    int Write(GpsData gpsData);
-    void Update (GpsData gpsData);
-    void UpdateHeartBeat(GpsData gpsData);
+    int Write(T gpsData);
+    void Update (T gpsData);
+    void UpdateHeartBeat(T gpsData);
 }

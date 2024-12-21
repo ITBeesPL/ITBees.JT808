@@ -2,19 +2,19 @@
 
 namespace ITBees.JT808.DefaultServiceImplementation;
 
-public class GpsWriteRequestLogSingleton : IGpsWriteRequestLogSingleton
+public class GpsWriteRequestLogSingleton<T> : IGpsWriteRequestLogSingleton<T> where T : GpsData
 {
-    public void Update(GpsData gpsData)
+    public int Write(T gpsData)
     {
         throw new NotImplementedException();
     }
 
-    public void UpdateHeartBeat(GpsData gpsData)
+    public void Update(T gpsData)
     {
         throw new NotImplementedException();
     }
 
-    int IGpsWriteRequestLogSingleton.Write(GpsData gpsData)
+    public void UpdateHeartBeat(T gpsData)
     {
         throw new NotImplementedException();
     }

@@ -4,7 +4,7 @@ using ITBees.Models.Users;
 
 namespace ITBees.JT808.Interfaces;
 
-public class GpsDevice
+public abstract class GpsDevice
 {
     public Guid Guid { get; set; }
     public string DeviceId { get; set; }
@@ -16,5 +16,4 @@ public class GpsDevice
     public GpsLocation? LatestGpsLocation { get; set; }
     public string? PhoneNumber { get; set; }
     public Guid CreatedByGuid { get; set; }
-    public Guid? VehicleGuid { get; set; }
 }

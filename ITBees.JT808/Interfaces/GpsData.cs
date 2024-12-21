@@ -1,6 +1,6 @@
 ﻿namespace ITBees.JT808.Interfaces;
 
-public class GpsData
+public abstract class GpsData
 {
     public int Id { get; set; }
     public string DeviceId { get; set; }
@@ -19,8 +19,6 @@ public class GpsData
     public byte NetworkSignal { get; set; }
     public byte Satellites { get; set; }
     public double BatteryVoltage { get; set; }
-    public GpsDevice GpsDevice { get; set; }
-    public Guid? GpsDeviceGuid { get; set; }
     public string? RequestBody { get; set; }
     public DateTime Received { get; set; }
     public bool Handled { get; set; }
