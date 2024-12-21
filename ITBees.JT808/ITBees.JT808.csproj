@@ -8,9 +8,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="ITBees.FAS.ApiInterfaces" Version="8.0.42" />
+        <PackageReference Include="ITBees.FAS.ApiInterfaces" Version="8.0.43" />
         <PackageReference Include="ITBees.Fas.Setup" Version="8.0.11" />
-        <PackageReference Include="ITBees.Interfaces" Version="8.0.51" />
+        <PackageReference Include="ITBees.Interfaces" Version="8.0.52" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
         <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
     </ItemGroup>
