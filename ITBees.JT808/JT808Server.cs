@@ -367,6 +367,7 @@ namespace JT808ServerApp
 
         private void HandleLocationReport(string deviceId, byte[] msgBody, T gpsData)
         {
+            // 1) Read standard JT808 fields
             uint alarmFlag = ReadUInt32BigEndian(msgBody, 0);
             uint status = ReadUInt32BigEndian(msgBody, 4);
             uint latitude = ReadUInt32BigEndian(msgBody, 8);
@@ -390,6 +391,20 @@ namespace JT808ServerApp
             bool isEngineOn = (status & 0x00000001) != 0;
             gpsData.IsEngineOn = isEngineOn;
 
+            // 3) Log or do something with that info
+            if (isEngineOn)
+            {
+                _logger.LogInformation($"[{deviceId}] Engine is ON (ACC bit=1).");
+            }
+            else
+            {
+                _logger.LogInformation($"[{deviceId}] Engine is OFF (ACC bit=0).");
+            }
+
+            // optional: store in RequestBody for debugging if you want
+            gpsData.RequestBody = $"Handle location report - EngineOn={isEngineOn} " + gpsData.RequestBody;
+
+            // 4) Parse additional data if exists (extends after position fields)
             ParseAdditionalData(msgBody.Skip(28).ToArray(), gpsData);
 
             _gpsWriteRequestLogSingleton.Write(gpsData);
