@@ -31,4 +31,5 @@ public abstract class GpsData
     public string? StartLocationName { get; set; }
     public string? EndLocationName { get; set; }
     public string? ReasonForTravel { get; set; }
+    public bool IsEngineOn { get; set; }
 }

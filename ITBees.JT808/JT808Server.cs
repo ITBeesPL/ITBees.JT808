@@ -385,8 +385,10 @@ namespace JT808ServerApp
             gpsData.Timestamp = DateTime.ParseExact(time, "yyMMddHHmmss", null);
             gpsData.AlarmFlag = alarmFlag;
             gpsData.Status = status;
-            gpsData.Altitude = altitude;
-            gpsData.RequestBody = "Handle location report" + gpsData.RequestBody;
+
+            // 2) Check ACC/engine status from bit 0 of `status`
+            bool isEngineOn = (status & 0x00000001) != 0;
+            gpsData.IsEngineOn = isEngineOn;
 
             ParseAdditionalData(msgBody.Skip(28).ToArray(), gpsData);
 
