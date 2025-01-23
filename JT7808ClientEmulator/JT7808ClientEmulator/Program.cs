@@ -1,375 +1,168 @@
 ﻿using System;
-using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
-namespace JT808ClientEmulator
+namespace JT808ClientHexReplay
 {
-    internal class Program
+    class Program
     {
         static void Main(string[] args)
         {
-            //string serverIp = "devapi.kilometrowka.net"; // IP address of your JT808 server
-            string serverIp = "127.0.0.1"; // IP address of your JT808 server
-            int serverPort = 2323; // Port your JT808 server is listening on
+            // Change this IP and port to match your JT808 server
+            string serverIp = "127.0.0.1";
+            int serverPort = 2323;
 
             try
             {
+                Console.WriteLine("JT808 Test Client (Hex Replay).");
+                Console.WriteLine($"Connecting to {serverIp}:{serverPort} ...");
+
+                // Create TCP client and connect
                 TcpClient client = new TcpClient();
                 client.Connect(serverIp, serverPort);
-                Console.WriteLine("Connected to server.");
+
+                Console.WriteLine("Connected to server. You can now paste your hex messages (without '0x' or spaces).");
+                Console.WriteLine("Enter an empty line to exit.\n");
 
                 NetworkStream stream = client.GetStream();
-                //stream.ReadTimeout = 4000;
 
-                // Send registration message
-                //byte[] registrationMessage = BuildRegistrationMessage();
-                //SendMessage(stream, registrationMessage, "registration");
-
-                // Send authentication message
-                //byte[] authMessage = BuildAuthenticationMessage();
-                //SendMessage(stream, authMessage, "authentication");
-
-                // Send location report message
-                //byte[] locationMessage = BuildLocationReportMessage();
-                //SendMessage(stream, locationMessage, "location report");
-
-                // Optionally, send custom messages
                 while (true)
                 {
-                    Console.WriteLine("Do you want to send a custom message? (y/n)");
-                    string input = Console.ReadLine();
-                    if (input.ToLower() != "y")
-                        break;
+                    Console.WriteLine("Paste your JT808 message in hex (e.g. 7E0200...7E), then press Enter:");
+                    string hexInput = Console.ReadLine().Trim();
 
-                    Console.WriteLine("Enter the message in hex format (e.g., 7E020000...):");
-                    string base64Message = Console.ReadLine();
+                    // Break the loop if user enters an empty line
+                    if (string.IsNullOrEmpty(hexInput))
+                    {
+                        break;
+                    }
+
                     try
                     {
-                        byte[] customMessage2 = Convert.FromBase64String(base64Message);
-                        Console.WriteLine($"Custom message length: {customMessage2.Length}");
-                        Console.WriteLine($"Custom message bytes: {BitConverter.ToString(customMessage2)}");
-                        SendMessage(stream, customMessage2, "custom message", false);
+                        // Convert hex string to byte array
+                        byte[] message = HexStringToByteArray(hexInput);
+
+                        // Send the raw bytes to the server
+                        SendMessage(stream, message);
+
+                        // Optionally read response
+                        ReadResponse(stream);
                     }
-                    catch (FormatException)
+                    catch (Exception ex)
                     {
-                        Console.WriteLine("Invalid Base64 string. Please try again.");
-                        continue;
+                        Console.WriteLine($"Error processing your hex input: {ex.Message}");
                     }
                 }
 
-                // Close the connection
+                // Close connection
                 stream.Close();
                 client.Close();
                 Console.WriteLine("Connection closed.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error: " + ex.Message);
+                Console.WriteLine($"Connection error: {ex.Message}");
             }
 
             Console.WriteLine("Press any key to exit...");
             Console.ReadKey();
         }
 
-        static void SendMessage(NetworkStream stream, byte[] message, string messageType, bool expectResponse = true)
+        /// <summary>
+        /// Sends raw bytes to the JT808 server via the established stream.
+        /// </summary>
+        private static void SendMessage(NetworkStream stream, byte[] message)
         {
             try
             {
                 stream.Write(message, 0, message.Length);
-                Console.WriteLine($"Sent {messageType} message.");
+                Console.WriteLine($"Sent {message.Length} bytes to server. Hex dump:");
+                Console.WriteLine(BitConverter.ToString(message));
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error sending message: {ex.Message}");
-                return;
+                Console.WriteLine($"Error sending data: {ex.Message}");
             }
+        }
 
-            if (expectResponse)
+        /// <summary>
+        /// Reads an incoming response (if any) from the server, up to 2KB, and prints it in hex.
+        /// </summary>
+        private static void ReadResponse(NetworkStream stream)
+        {
+            // Wait briefly for data to arrive
+            Thread.Sleep(500);
+
+            try
             {
-                byte[] buffer = new byte[1024];
-                try
+                // Check if there is data to read
+                if (stream.DataAvailable)
                 {
+                    byte[] buffer = new byte[2048];
                     int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                    Console.WriteLine("Received response from server:");
-                    Console.WriteLine(BitConverter.ToString(buffer, 0, bytesRead));
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error reading response: {ex.Message}");
-                }
-            }
-            else
-            {
-                Console.WriteLine("No response expected from server.");
-            }
 
-            Thread.Sleep(1000);
-        }
+                    if (bytesRead > 0)
+                    {
+                        byte[] response = new byte[bytesRead];
+                        Array.Copy(buffer, response, bytesRead);
 
-        static byte[] BuildRegistrationMessage()
-        {
-            // Construct registration message according to JT808 protocol
-            ushort msgId = 0x0100;
-
-            // Message Body
-            List<byte> body = new List<byte>();
-
-            // Province ID (2 bytes)
-            ushort provinceId = 0x0033;
-            body.Add((byte)(provinceId >> 8));
-            body.Add((byte)(provinceId & 0xFF));
-
-            // City ID (2 bytes)
-            ushort cityId = 0x0044;
-            body.Add((byte)(cityId >> 8));
-            body.Add((byte)(cityId & 0xFF));
-
-            // Manufacturer ID (5 bytes)
-            string manufacturerId = "1ABCDE";
-            byte[] manufacturerIdBytes = Encoding.ASCII.GetBytes(manufacturerId.PadRight(5, '\0'));
-            body.AddRange(manufacturerIdBytes);
-
-            // Terminal Model (20 bytes)
-            string terminalModel = "1JT808Client";
-            byte[] terminalModelBytes = Encoding.ASCII.GetBytes(terminalModel.PadRight(20, '\0'));
-            body.AddRange(terminalModelBytes);
-
-            // Terminal ID (7 bytes)
-            string terminalId = "01234567";
-            byte[] terminalIdBytes = Encoding.ASCII.GetBytes(terminalId.PadRight(7, '\0'));
-            body.AddRange(terminalIdBytes);
-
-            // License Plate Color (1 byte)
-            byte plateColor = 0x01; // Blue
-            body.Add(plateColor);
-
-            //// License Plate (variable, GBK encoding)
-            //string plateNumber = "TEST123";
-            //byte[] plateNumberBytes = Encoding.GetEncoding("GBK").GetBytes(plateNumber);
-            //body.AddRange(plateNumberBytes);
-
-            byte[] bodyBytes = body.ToArray();
-
-            // Build the full message
-            byte[] message = BuildJT808Message(msgId, bodyBytes, 1);
-
-            return message;
-        }
-
-        static byte[] BuildAuthenticationMessage()
-        {
-            // Construct authentication message according to JT808 protocol
-            ushort msgId = 0x0102;
-
-            // Message Body
-            string authCode = "AUTH_CODE"; // Authentication code
-            byte[] authCodeBytes = Encoding.ASCII.GetBytes(authCode);
-
-            // Build the full message
-            byte[] message = BuildJT808Message(msgId, authCodeBytes, 2);
-
-            return message;
-        }
-
-        static byte[] BuildLocationReportMessage()
-        {
-            // Construct location report message according to JT808 protocol
-            ushort msgId = 0x0200;
-
-            // Message Body
-            List<byte> body = new List<byte>();
-
-            // Alarm flags (4 bytes)
-            uint alarmFlags = 0x00000000;
-            body.AddRange(BitConverter.GetBytes(alarmFlags).Reverse());
-
-            // Status flags (4 bytes)
-            uint statusFlags = 0x00000000;
-            body.AddRange(BitConverter.GetBytes(statusFlags).Reverse());
-
-            // Latitude (4 bytes)
-            Console.WriteLine("Enter latitude (e.g., 51.057589):");
-            double latitudeInput = double.Parse(Console.ReadLine());
-            uint latitude = (uint)(latitudeInput * 1e6);
-            body.AddRange(BitConverter.GetBytes(latitude).Reverse());
-
-            // Longitude (4 bytes)
-            Console.WriteLine("Enter longitude (e.g., 17.032861):");
-            double longitudeInput = double.Parse(Console.ReadLine());
-            uint longitude = (uint)(longitudeInput * 1e6);
-            body.AddRange(BitConverter.GetBytes(longitude).Reverse());
-
-            // Altitude (2 bytes)
-            ushort altitude = 10; // In meters
-            body.Add((byte)(altitude >> 8));
-            body.Add((byte)(altitude & 0xFF));
-
-            // Speed (2 bytes)
-            ushort speed = 60; // In km/h
-            body.Add((byte)(speed >> 8));
-            body.Add((byte)(speed & 0xFF));
-
-            // Direction (2 bytes)
-            ushort direction = 90; // In degrees
-            body.Add((byte)(direction >> 8));
-            body.Add((byte)(direction & 0xFF));
-
-            // Time (6 bytes), BCD[6], YYMMDDhhmmss
-            string time = DateTime.Now.ToString("yyMMddHHmmss");
-            byte[] timeBytes = StringToBCD(time);
-            body.AddRange(timeBytes);
-
-            // Additional information (optional)
-            // Uncomment and modify as needed
-            /*
-            // Mileage (0x01)
-            body.Add(0x01); // Info ID
-            body.Add(0x04); // Length
-            uint mileage = 12345; // In meters
-            body.AddRange(BitConverter.GetBytes(mileage).Reverse());
-
-            // Fuel (0x02)
-            body.Add(0x02); // Info ID
-            body.Add(0x02); // Length
-            ushort fuel = 50; // In liters
-            body.Add((byte)(fuel >> 8));
-            body.Add((byte)(fuel & 0xFF));
-            */
-
-            byte[] bodyBytes = body.ToArray();
-
-            // Build the full message
-            byte[] message = BuildJT808Message(msgId, bodyBytes, 3);
-
-            return message;
-        }
-
-        static byte[] BuildJT808Message(ushort msgId, byte[] bodyBytes, ushort msgSerialNumber)
-        {
-            // Device ID (BCD[6])
-            string deviceId = "69243200844"; // Example device ID (12 digits)
-            byte[] deviceIdBCD = StringToBCD(deviceId);
-
-            // Message Body Properties
-            ushort msgBodyProps = (ushort)(bodyBytes.Length & 0x3FF); // Lower 10 bits for length
-            msgBodyProps |= 0x0000; // Set encryption and subpackage bits if needed
-
-            // Build the message
-            List<byte> message = new List<byte>();
-
-            // Add Message Header
-            message.Add((byte)(msgId >> 8));
-            message.Add((byte)(msgId & 0xFF));
-            message.Add((byte)(msgBodyProps >> 8));
-            message.Add((byte)(msgBodyProps & 0xFF));
-            message.AddRange(deviceIdBCD);
-            message.Add((byte)(msgSerialNumber >> 8));
-            message.Add((byte)(msgSerialNumber & 0xFF));
-
-            // Add Message Body
-            message.AddRange(bodyBytes);
-
-            // Calculate checksum
-            byte checksum = 0;
-            for (int i = 0; i < message.Count; i++)
-            {
-                checksum ^= message[i];
-            }
-
-            // Perform escaping
-            List<byte> escapedMessage = new List<byte>();
-            escapedMessage.Add(0x7E); // Start flag
-            foreach (byte b in message)
-            {
-                if (b == 0x7E)
-                {
-                    escapedMessage.Add(0x7D);
-                    escapedMessage.Add(0x02);
-                }
-                else if (b == 0x7D)
-                {
-                    escapedMessage.Add(0x7D);
-                    escapedMessage.Add(0x01);
+                        Console.WriteLine("Received response from server:");
+                        Console.WriteLine(BitConverter.ToString(response));
+                    }
+                    else
+                    {
+                        Console.WriteLine("No response (0 bytes read).");
+                    }
                 }
                 else
                 {
-                    escapedMessage.Add(b);
+                    Console.WriteLine("No immediate response from server (no data available).");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error reading response: {ex.Message}");
+            }
+        }
+        /// <summary>
+        /// Converts a string of hex digits (possibly containing dashes, spaces, etc.)
+        /// into a byte array. Any non [0-9a-fA-F] character is removed.
+        /// </summary>
+        private static byte[] HexStringToByteArray(string hex)
+        {
+            // 1) Remove any non-hex characters (including whitespace, dashes, etc.)
+            var sb = new StringBuilder();
+            foreach (char c in hex)
+            {
+                if ((c >= '0' && c <= '9') ||
+                    (c >= 'A' && c <= 'F') ||
+                    (c >= 'a' && c <= 'f'))
+                {
+                    sb.Append(c);
                 }
             }
 
-            // Add checksum
-            if (checksum == 0x7E)
+            // 2) Now sb should contain only hex digits, without spaces or dashes.
+            string cleanHex = sb.ToString();
+
+            // 3) Check length
+            if (cleanHex.Length % 2 != 0)
             {
-                escapedMessage.Add(0x7D);
-                escapedMessage.Add(0x02);
-            }
-            else if (checksum == 0x7D)
-            {
-                escapedMessage.Add(0x7D);
-                escapedMessage.Add(0x01);
-            }
-            else
-            {
-                escapedMessage.Add(checksum);
+                throw new ArgumentException("Hex string must have an even number of valid hex digits.");
             }
 
-            escapedMessage.Add(0x7E); // End flag
-
-            return escapedMessage.ToArray();
-        }
-
-        static byte[] StringToBCD(string str)
-        {
-            if (str.Length % 2 != 0)
-            {
-                str = "0" + str;
-            }
-
-            byte[] bcd = new byte[str.Length / 2];
-            for (int i = 0; i < bcd.Length; i++)
-            {
-                bcd[i] = (byte)(((GetHexValue(str[2 * i]) << 4) | GetHexValue(str[2 * i + 1])));
-            }
-            return bcd;
-        }
-
-        static int GetHexValue(char hex)
-        {
-            if (hex >= '0' && hex <= '9')
-                return hex - '0';
-            else if (hex >= 'A' && hex <= 'F')
-                return hex - 'A' + 10;
-            else if (hex >= 'a' && hex <= 'f')
-                return hex - 'a' + 10;
-            else
-                throw new ArgumentException("Invalid hexadecimal character");
-        }
-
-        static byte[] HexStringToByteArray(string hex)
-        {
-            hex = hex.Replace(" ", "");
-            if (hex.Length % 2 != 0)
-                throw new ArgumentException("Hex string must have an even length");
-            byte[] data = new byte[hex.Length / 2];
+            // 4) Convert pairs of hex digits into bytes
+            byte[] data = new byte[cleanHex.Length / 2];
             for (int i = 0; i < data.Length; i++)
             {
-                data[i] = (byte)((GetHexValue(hex[2 * i]) << 4) | GetHexValue(hex[2 * i + 1]));
+                string byteValue = cleanHex.Substring(i * 2, 2);
+                data[i] = Convert.ToByte(byteValue, 16);
             }
+
             return data;
         }
 
-        static byte[] StringToBCD(string str, int length)
-        {
-            // Pads or trims the string to the desired length
-            if (str.Length > length * 2)
-                str = str.Substring(str.Length - length * 2);
-            else if (str.Length < length * 2)
-                str = str.PadLeft(length * 2, '0');
-
-            return StringToBCD(str);
-        }
     }
 }
