@@ -67,7 +67,8 @@ namespace JT808ServerApp
                             break;
 
                         byteList.AddRange(buffer.Take(bytesRead));
-
+                        byte[] rawBytes = byteList.ToArray();
+                        string hexData = ToHexString(rawBytes);
                         while (byteList.Contains(0x7E))
                         {
                             int startIndex = byteList.IndexOf(0x7E);
@@ -86,7 +87,7 @@ namespace JT808ServerApp
                             var data = ProcessJT808Message(messageBytes);
                             if (data != null)
                             {
-                                var response = HandleMessage(data, client, base64Message);
+                                var response = HandleMessage(data, client, base64Message, hexData);
                                 if (response != null)
                                 {
                                     await networkStream.WriteAsync(response, 0, response.Length);
@@ -102,7 +103,18 @@ namespace JT808ServerApp
             }
         }
 
-        private byte[] ProcessJT808Message(byte[] message)
+        private string ToHexString(byte[] data)
+        {
+            var sb = new StringBuilder(data.Length * 2);
+            foreach (var b in data)
+            {
+                sb.Append(b.ToString("X2"));
+            }
+
+            return sb.ToString();
+        }
+
+        private byte[] ProcessJT808Message(byte[] message, string hexData = null)
         {
             if (message.Length < 2 || message[0] != 0x7E || message[^1] != 0x7E)
                 return null;
@@ -166,6 +178,7 @@ namespace JT808ServerApp
                     i++;
                 }
             }
+
             return result.ToArray();
         }
 
@@ -189,13 +202,14 @@ namespace JT808ServerApp
                     result.Add(b);
                 }
             }
+
             return result.ToArray();
         }
 
-        private byte[] HandleMessage(byte[] data, TcpClient client, string base64Message)
+        private byte[] HandleMessage(byte[] data, TcpClient client, string s, string base64Message)
         {
             string base64String = Convert.ToBase64String(data);
-            var gpsData = new T() { RequestBody = $" '{base64String}' - '{base64Message}'", Received = DateTime.Now };
+            var gpsData = new T() { RequestBody = $"", Received = DateTime.Now, MessageHex = base64Message};
 
             try
             {
@@ -209,7 +223,6 @@ namespace JT808ServerApp
                 gpsData.DeviceId = deviceId;
                 var msgBody = new byte[data.Length - 12];
                 Array.Copy(data, 12, msgBody, 0, msgBody.Length);
-                gpsData.MessageHex = BitConverter.ToString(msgBody);
 
                 switch (msgId)
                 {
@@ -226,7 +239,7 @@ namespace JT808ServerApp
                         return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
                     case 0x0001:
                         gpsData.RequestBody = "Break - 0x0001 " + gpsData.RequestBody;
-                        _gpsWriteRequestLogSingleton.Write(gpsData);
+                        _gpsWriteRequestLogSingleton.WriteUnknownMessages(gpsData);
                         break;
                     case 0x0300:
                         HandleTextMessage(deviceId, msgBody, gpsData);
@@ -241,9 +254,10 @@ namespace JT808ServerApp
                         return CreateUniversalResponse(msgSerialNumber, msgId, 0, deviceId);
                     default:
                         gpsData.RequestBody = "Default not handled case - take a look at it " + gpsData.RequestBody;
-                        _gpsWriteRequestLogSingleton.Write(gpsData);
+                        _gpsWriteRequestLogSingleton.WriteUnknownMessages(gpsData);
                         return CreateUniversalResponse(msgSerialNumber, msgId, 3, deviceId);
                 }
+
                 return null;
             }
             catch (Exception e)
@@ -274,22 +288,19 @@ namespace JT808ServerApp
                     }
 
                     gpsData.VIN = vin;
-                    Console.WriteLine($"Extracted VIN: {vin}");
+                    _gpsWriteRequestLogSingleton.ExtractedVin(vin, gpsData);
                 }
 
                 gpsData.RequestBody =
                     $"HandleDataUpstreamPassThrough Data Upstream Pass-Through Type: {type:X2} , Content (string): {contentString} {gpsData.RequestBody}";
                 gpsData.StartJourney = true;
-
-                _gpsWriteRequestLogSingleton.Write(gpsData);
             }
             else
             {
                 gpsData.RequestBody =
                     $"HandleDataUpstreamPassThrough Data Upstream Pass-Through Type: {type:X2} , Content (hex): {BitConverter.ToString(content)} {gpsData.RequestBody}";
-
-                _gpsWriteRequestLogSingleton.Write(gpsData);
             }
+            _gpsWriteRequestLogSingleton.WriteUnknownMessages(gpsData);
         }
 
 
@@ -333,7 +344,8 @@ namespace JT808ServerApp
             gpsData.TerminalId = terminalId;
             gpsData.PlateColor = plateColor;
 
-            _logger.LogInformation($"Terminal Registered: DeviceId={deviceId}, VIN={gpsData.VIN}, TerminalId={terminalId}");
+            _logger.LogInformation(
+                $"Terminal Registered: DeviceId={deviceId}, VIN={gpsData.VIN}, TerminalId={terminalId}");
 
             ushort responseMsgId = 0x8100;
             var responseBody = new List<byte>();
@@ -341,7 +353,8 @@ namespace JT808ServerApp
             responseBody.Add((byte)(msgSerialNumber >> 8));
             responseBody.Add((byte)(msgSerialNumber & 0xFF));
 
-            var isAuthorized = _gpsDeviceAuthorizationSingleton.IsAuthorized(deviceId, terminalModel, terminalId, gpsData.VIN);
+            var isAuthorized =
+                _gpsDeviceAuthorizationSingleton.IsAuthorized(deviceId, terminalModel, terminalId, gpsData.VIN);
 
             if (isAuthorized)
                 responseBody.Add(0x00);
@@ -353,7 +366,7 @@ namespace JT808ServerApp
             responseBody.AddRange(authCodeBytes);
 
             var responseData = BuildJT808Message(responseMsgId, deviceId, responseBody.ToArray());
-            _gpsWriteRequestLogSingleton.Write(gpsData);
+            _gpsWriteRequestLogSingleton.HandleTerminalRegistration(gpsData);
             return responseData;
         }
 
@@ -361,7 +374,7 @@ namespace JT808ServerApp
         {
             var authCode = Encoding.ASCII.GetString(msgBody);
             gpsData.RequestBody = "Handle authentication" + gpsData.RequestBody;
-            _gpsWriteRequestLogSingleton.Write(gpsData);
+            _gpsWriteRequestLogSingleton.HandleAuthentication(gpsData);
             return CreateUniversalResponse(msgSerialNumber, 0x0102, 0, deviceId);
         }
 
@@ -458,7 +471,7 @@ namespace JT808ServerApp
             var message = Encoding.GetEncoding("GBK").GetString(msgBody);
 
             gpsData.RequestBody = "Handle text message " + gpsData.RequestBody;
-            _gpsWriteRequestLogSingleton.Write(gpsData);
+            _gpsWriteRequestLogSingleton.WriteUnknownMessages(gpsData);
         }
 
         private void HandleControlResponse(string deviceId, byte[] msgBody, GpsData gpsData)
@@ -479,7 +492,7 @@ namespace JT808ServerApp
             var responseData = BuildJT808Message(responseMsgId, deviceId, responseBody.ToArray());
 
             gpsData.RequestBody = "Handle time sync request" + gpsData.RequestBody;
-            _gpsWriteRequestLogSingleton.Write(gpsData);
+            _gpsWriteRequestLogSingleton.WriteTimeSyncRequest(gpsData);
             return responseData;
         }
 
@@ -549,6 +562,7 @@ namespace JT808ServerApp
                 sb.Append((data[i] >> 4).ToString("X"));
                 sb.Append((data[i] & 0x0F).ToString("X"));
             }
+
             return sb.ToString().TrimStart('0');
         }
 
@@ -572,6 +586,7 @@ namespace JT808ServerApp
 
                 bcd[i] = (byte)((highNibble << 4) | lowNibble);
             }
+
             return bcd;
         }
 

@@ -18,4 +18,29 @@ public class GpsWriteRequestLogSingleton<T> : IGpsWriteRequestLogSingleton<T> wh
     {
         throw new NotImplementedException();
     }
+
+    public void ExtractedVin<T1>(string vin, T1 gpsData)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void WriteUnknownMessages<T1>(T1 gpsData)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void HandleTerminalRegistration<T1>(T1 gpsData)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void HandleAuthentication<T1>(T1 gpsData)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void WriteTimeSyncRequest<T1>(T1 gpsData)
+    {
+        throw new NotImplementedException();
+    }
 }

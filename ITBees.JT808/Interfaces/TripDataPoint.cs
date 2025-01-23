@@ -7,4 +7,5 @@ public class TripDataPoint
     public double Speed { get; set; }
     public ushort Altitude { get; set; }
     public DateTime Timestamp { get; set; }
+    public ushort Direction { get; set; }
 }
