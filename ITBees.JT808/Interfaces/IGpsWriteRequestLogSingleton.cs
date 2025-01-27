@@ -8,6 +8,7 @@ public interface IGpsWriteRequestLogSingleton<T> where T: GpsData
     /// <param name="gpsData"></param>
     /// <returns></returns>
     int Write(T gpsData);
+    int Write(List<T> gpsData);
     void Update (T gpsData);
     void UpdateHeartBeat(T gpsData);
     void ExtractedVin<T>(string vin, T gpsData);

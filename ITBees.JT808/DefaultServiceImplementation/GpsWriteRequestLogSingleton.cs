@@ -9,6 +9,11 @@ public class GpsWriteRequestLogSingleton<T> : IGpsWriteRequestLogSingleton<T> wh
         throw new NotImplementedException();
     }
 
+    public int Write(List<T> gpsData)
+    {
+        throw new NotImplementedException();
+    }
+
     public void Update(T gpsData)
     {
         throw new NotImplementedException();
