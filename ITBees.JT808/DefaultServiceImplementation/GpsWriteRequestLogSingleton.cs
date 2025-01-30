@@ -4,12 +4,12 @@ namespace ITBees.JT808.DefaultServiceImplementation;
 
 public class GpsWriteRequestLogSingleton<T> : IGpsWriteRequestLogSingleton<T> where T : GpsData
 {
-    public int Write(T gpsData)
+    public Task<int> Write(T gpsData)
     {
         throw new NotImplementedException();
     }
 
-    public int Write(List<T> gpsData)
+    public Task<int> Write(List<T> gpsData)
     {
         throw new NotImplementedException();
     }
