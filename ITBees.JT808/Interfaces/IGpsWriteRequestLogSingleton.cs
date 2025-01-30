@@ -7,8 +7,8 @@ public interface IGpsWriteRequestLogSingleton<T> where T: GpsData
     /// </summary>
     /// <param name="gpsData"></param>
     /// <returns></returns>
-    int Write(T gpsData);
-    int Write(List<T> gpsData);
+    Task<int> Write(T gpsData);
+    Task<int> Write(List<T> gpsData);
     void Update (T gpsData);
     void UpdateHeartBeat(T gpsData);
     void ExtractedVin<T>(string vin, T gpsData);
