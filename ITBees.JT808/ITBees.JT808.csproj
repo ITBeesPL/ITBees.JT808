@@ -11,7 +11,7 @@
         <PackageReference Include="ITBees.FAS.ApiInterfaces" Version="8.0.48" />
         <PackageReference Include="ITBees.Fas.Setup" Version="8.0.11" />
         <PackageReference Include="ITBees.Interfaces" Version="8.0.59" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.4" />
         <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
     </ItemGroup>
 
