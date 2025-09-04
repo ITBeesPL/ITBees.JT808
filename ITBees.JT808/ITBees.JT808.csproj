@@ -23,7 +23,7 @@
 <!--        <ProjectReference Include="..\..\ITBees.FAS.ApiInterfaces\ITBees.FAS.ApiInterfaces\ITBees.FAS.ApiInterfaces.csproj"/>-->
 <!--        <ProjectReference Include="..\..\ITBees.FAS.Setup\ITBees.FAS.Setup\ITBees.FAS.Setup.csproj"/>-->
 <!--        <ProjectReference Include="..\..\ITBees.Interfaces\ITBees.Interfaces\ITBees.Interfaces.csproj"/>-->
-<!--        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2"/>-->
+<!--        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.4"/>-->
 <!--        <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0"/>-->
 <!--    </ItemGroup>-->
 
